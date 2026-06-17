@@ -26,6 +26,14 @@ export function proxy(request: NextRequest) {
 
   // 2. Authenticated Role-based access verification
   if (token) {
+    // Redirect logged-in vendor away from login/register pages
+    if (
+      role === "vendor" &&
+      (pathname === "/vendor/login" || pathname === "/vendor/register")
+    ) {
+      return NextResponse.redirect(new URL("/vendor/profile", request.url));
+    }
+
     if (pathname.startsWith("/vendor") && 
         pathname !== "/vendor/login" && 
         pathname !== "/vendor/register" && 

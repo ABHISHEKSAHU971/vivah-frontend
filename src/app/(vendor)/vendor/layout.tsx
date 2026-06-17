@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Store, Wrench, User, LogOut, CheckSquare } from "lucide-react";
+import { LayoutDashboard, Store, Wrench, User, LogOut, Bell } from "lucide-react";
 import { useStore } from "@/store/store";
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
@@ -39,34 +39,49 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           </Link>
 
           <nav className="space-y-1.5">
-            <Link 
-              href="/vendor/dashboard" 
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold hover:bg-slate-800 text-zinc-300 hover:text-white transition-all"
+            {[
+              { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+              { href: "/vendor/venues", icon: Store, label: "My Venues" },
+              { href: "/vendor/services", icon: Wrench, label: "Service Packages" },
+            ].map(({ href, icon: Icon, label }) => {
+              const active = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                    active
+                      ? "bg-gold text-black"
+                      : "hover:bg-slate-800 text-zinc-300 hover:text-white"
+                  }`}
+                >
+                  <Icon size={15} /> {label}
+                </Link>
+              );
+            })}
+
+            {/* Profile with notification badge */}
+            <Link
+              href="/vendor/profile"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                pathname === "/vendor/profile"
+                  ? "bg-gold text-black"
+                  : "hover:bg-slate-800 text-zinc-300 hover:text-white"
+              }`}
             >
-              <LayoutDashboard size={15} /> Dashboard
-            </Link>
-            <Link 
-              href="/vendor/venues" 
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold hover:bg-slate-800 text-zinc-300 hover:text-white transition-all"
-            >
-              <Store size={15} /> My Venues
-            </Link>
-            <Link 
-              href="/vendor/services" 
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold hover:bg-slate-800 text-zinc-300 hover:text-white transition-all"
-            >
-              <Wrench size={15} /> Service Packages
-            </Link>
-            <Link 
-              href="/vendor/profile" 
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold hover:bg-slate-800 text-zinc-300 hover:text-white transition-all"
-            >
-              <User size={15} /> Vendor Profile
+              <User size={15} />
+              <span className="flex-grow">Vendor Profile</span>
+              <span className="relative">
+                <Bell size={14} />
+                <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-red-500 text-[8px] font-black flex items-center justify-center animate-pulse">
+                  2
+                </span>
+              </span>
             </Link>
           </nav>
         </div>
 
-        <button 
+        <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-all"
         >
@@ -74,9 +89,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         </button>
       </aside>
 
-      {/* Content panel */}
-      <main className="flex-grow p-6 md:p-10">
-        <div className="max-w-5xl mx-auto bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm min-h-[500px]">
+      {/* Content panel — no white wrapper so profile header gradient shows edge-to-edge */}
+      <main className="flex-grow p-4 md:p-8 overflow-x-hidden">
+        <div className="max-w-5xl mx-auto min-h-[500px]">
           {children}
         </div>
       </main>
