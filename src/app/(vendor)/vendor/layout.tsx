@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Store, Wrench, User, LogOut, Bell } from "lucide-react";
 import { useStore } from "@/store/store";
+import { authApi } from "@/lib/authApi";
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const setToken = useStore((s) => s.setToken);
+  const clearSession = useStore((s) => s.clearSession);
 
   // Skip layout rendering on login/register/onboarding routes
   const isAuthRoute = 
@@ -16,8 +17,15 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     pathname === "/vendor/register" || 
     pathname === "/vendor/onboarding";
 
-  const handleLogout = () => {
-    setToken(null);
+  const handleLogout = async () => {
+    // Blacklist the refresh token server-side, then clear local state
+    try {
+      const refresh = localStorage.getItem("refresh_token");
+      if (refresh) await authApi.logout(refresh);
+    } catch {
+      // Proceed with local logout even if API call fails
+    }
+    clearSession();
     router.push("/");
   };
 

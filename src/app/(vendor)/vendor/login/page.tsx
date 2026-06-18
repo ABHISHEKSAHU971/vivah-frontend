@@ -3,56 +3,93 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/store/store";
+import { authApi } from "@/lib/authApi";
 import Link from "next/link";
-import { Store, ShieldAlert, Zap, Copy, Check } from "lucide-react";
+import { Store, ShieldAlert, Phone, KeyRound, ArrowRight, ChevronLeft, Zap } from "lucide-react";
 
-const DEMO_EMAIL = "vendor@royalgardens.in";
-const DEMO_PASSWORD = "demo1234";
+type Step = "phone" | "otp";
 
 export default function VendorLogin() {
   const router = useRouter();
   const setToken = useStore((s) => s.setToken);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const setUser = useStore((s) => s.setUser);
+
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState<"email" | "pass" | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Core login function — receives final email/password values directly
-  const performLogin = (em: string, pw: string) => {
-    if (!em || !pw) {
-      setError("Please enter your email and password.");
+  // ── Step 1: Send OTP ──────────────────────────────────────────────────
+  /** Normalize to E.164 format required by the backend PhoneNumberField */
+  const toE164 = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
+    if (digits.length === 10) return `+91${digits}`;
+    return `+${digits}`; // pass through if already prefixed
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = toE164(phone.trim());
+    if (!cleaned || cleaned.length < 13) {
+      setError("Please enter a valid 10-digit phone number.");
       return;
     }
     setError("");
     setLoading(true);
-
-    // Set cookie (for SSR middleware) and Zustand store (for client state)
-    document.cookie = "access_token=mock_jwt_token; path=/; max-age=86400";
-    document.cookie = "user_role=vendor; path=/; max-age=86400";
-    setToken("mock_jwt_token", "vendor");
-
-    // Small delay to show loading spinner, then navigate
-    setTimeout(() => {
-      router.push("/vendor/profile");
-    }, 500);
+    try {
+      const res = await authApi.sendOtp({ phone: cleaned, role: "vendor" });
+      // Show the dev OTP hint if backend returns it
+      if (res.dev_otp) setDevOtp(res.dev_otp);
+      setStep("otp");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; error?: string } } };
+      setError(
+        axiosErr.response?.data?.message ||
+          axiosErr.response?.data?.error ||
+          "Failed to send OTP. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // ── Step 2: Verify OTP ────────────────────────────────────────────────
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    performLogin(email, password);
-  };
+    const cleaned = toE164(phone.trim());
+    if (!otp || otp.length !== 6) {
+      setError("Please enter the 6-digit OTP.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await authApi.verifyOtp({ phone: cleaned, otp_code: otp });
+      // Persist tokens
+      localStorage.setItem("access_token", res.access);
+      localStorage.setItem("refresh_token", res.refresh);
+      document.cookie = `access_token=${res.access}; path=/; max-age=86400`;
+      document.cookie = `user_role=vendor; path=/; max-age=86400`;
+      setToken(res.access, "vendor");
+      setUser(res.user);
 
-  const handleDemoLogin = () => {
-    setEmail(DEMO_EMAIL);
-    setPassword(DEMO_PASSWORD);
-    performLogin(DEMO_EMAIL, DEMO_PASSWORD);
-  };
-
-  const copyToClipboard = (type: "email" | "pass") => {
-    navigator.clipboard.writeText(type === "email" ? DEMO_EMAIL : DEMO_PASSWORD);
-    setCopied(type);
-    setTimeout(() => setCopied(null), 1800);
+      // Route based on onboarding state
+      if (res.needs_onboarding) {
+        router.push("/vendor/onboarding");
+      } else {
+        router.push("/vendor/profile");
+      }
+    } catch (err: unknown) {
+      console.error("[verifyOtp error]", err);
+      const axiosErr = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const serverMsg = axiosErr.response?.data?.message || axiosErr.response?.data?.error;
+      setError(serverMsg || axiosErr.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -65,64 +102,25 @@ export default function VendorLogin() {
     >
       <div className="max-w-sm w-full space-y-4">
 
-        {/* ── Demo Credentials Card ── */}
-        <div className="bg-gold/10 border border-gold/30 rounded-2xl p-4 space-y-3 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <Zap size={14} className="text-gold" />
-            <p className="text-[11px] font-bold uppercase tracking-widest text-gold">
-              Demo Vendor Account
+        {/* ── Dev OTP Hint (removed in production when SMS gateway is live) ── */}
+        {devOtp && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-1 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <Zap size={13} className="text-amber-400" />
+              <p className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                Dev Mode — OTP Code
+              </p>
+            </div>
+            <p className="text-2xl font-mono font-bold text-white tracking-[0.3em] text-center py-1">
+              {devOtp}
+            </p>
+            <p className="text-[10px] text-amber-400/60 text-center">
+              This banner is only shown in development. Remove once SMS is live.
             </p>
           </div>
+        )}
 
-          {/* Email */}
-          <div className="flex items-center justify-between bg-slate-900/60 border border-white/10 rounded-xl px-3 py-2">
-            <div>
-              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Email</p>
-              <p className="text-xs text-white font-mono mt-0.5">{DEMO_EMAIL}</p>
-            </div>
-            <button
-              onClick={() => copyToClipboard("email")}
-              className="text-slate-500 hover:text-gold transition-colors ml-3 shrink-0"
-            >
-              {copied === "email" ? <Check size={13} className="text-gold" /> : <Copy size={13} />}
-            </button>
-          </div>
-
-          {/* Password */}
-          <div className="flex items-center justify-between bg-slate-900/60 border border-white/10 rounded-xl px-3 py-2">
-            <div>
-              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Password</p>
-              <p className="text-xs text-white font-mono mt-0.5">{DEMO_PASSWORD}</p>
-            </div>
-            <button
-              onClick={() => copyToClipboard("pass")}
-              className="text-slate-500 hover:text-gold transition-colors ml-3 shrink-0"
-            >
-              {copied === "pass" ? <Check size={13} className="text-gold" /> : <Copy size={13} />}
-            </button>
-          </div>
-
-          {/* One-click demo login */}
-          <button
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-70"
-            style={{ background: "linear-gradient(135deg, #C9A440, #D4B96A)", color: "#050D1A" }}
-          >
-            {loading ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                Logging in…
-              </>
-            ) : (
-              <>
-                <Zap size={14} /> One-Click Demo Login → Profile Page
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* ── Login Form Card ── */}
+        {/* ── Main Card ── */}
         <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-6 md:p-8 space-y-5 shadow-xl backdrop-blur-md">
 
           <div className="text-center space-y-2">
@@ -130,7 +128,17 @@ export default function VendorLogin() {
               <Store size={18} />
             </div>
             <h1 className="text-xl font-heading font-semibold">Vendor Console</h1>
-            <p className="text-xs text-zinc-400">Sign in to manage listings &amp; bookings</p>
+            <p className="text-xs text-zinc-400">
+              {step === "phone"
+                ? "Enter your registered phone number"
+                : `OTP sent to +91 ${phone}`}
+            </p>
+          </div>
+
+          {/* Step indicator */}
+          <div className="flex items-center gap-2">
+            <div className={`flex-1 h-1 rounded-full transition-all ${step === "phone" || step === "otp" ? "bg-gold" : "bg-slate-700"}`} />
+            <div className={`flex-1 h-1 rounded-full transition-all ${step === "otp" ? "bg-gold" : "bg-slate-700"}`} />
           </div>
 
           {error && (
@@ -139,48 +147,100 @@ export default function VendorLogin() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@business.com"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gold/50"
-              />
-            </div>
+          {/* ── Phone Step ── */}
+          {step === "phone" && (
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  Phone Number
+                </label>
+                <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden focus-within:border-gold/50 transition-colors">
+                  <span className="flex items-center gap-1.5 px-3 py-2.5 text-xs text-zinc-500 border-r border-slate-700 select-none">
+                    <Phone size={12} /> +91
+                  </span>
+                  <input
+                    id="vendor-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className="flex-1 bg-transparent px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gold/50"
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 btn-gold py-2.5 rounded-lg text-black disabled:opacity-70"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    Sending OTP…
+                  </>
+                ) : (
+                  <>
+                    Send OTP <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-gold justify-center py-2.5 rounded-lg text-black disabled:opacity-70"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                  Signing in…
-                </span>
-              ) : (
-                "Login as Partner"
-              )}
-            </button>
-          </form>
+          {/* ── OTP Step ── */}
+          {step === "otp" && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  6-Digit OTP
+                </label>
+                <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden focus-within:border-gold/50 transition-colors">
+                  <span className="flex items-center gap-1.5 px-3 py-2.5 text-xs text-zinc-500 border-r border-slate-700 select-none">
+                    <KeyRound size={12} />
+                  </span>
+                  <input
+                    id="vendor-otp"
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="_ _ _ _ _ _"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="flex-1 bg-transparent px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none tracking-[0.4em] font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 btn-gold py-2.5 rounded-lg text-black disabled:opacity-70"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    Verifying…
+                  </>
+                ) : (
+                  <>
+                    Verify & Login <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setStep("phone"); setOtp(""); setError(""); setDevOtp(null); }}
+                className="w-full flex items-center justify-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                <ChevronLeft size={13} /> Change phone number
+              </button>
+            </form>
+          )}
 
           <p className="text-[11px] text-zinc-400 text-center">
             New vendor?{" "}
@@ -189,7 +249,6 @@ export default function VendorLogin() {
             </Link>
           </p>
         </div>
-
       </div>
     </div>
   );
