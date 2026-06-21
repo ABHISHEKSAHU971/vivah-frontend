@@ -49,10 +49,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <nav className="space-y-1.5">
             {[
               { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-              { href: "/vendor/venues", icon: Store, label: "My Venues" },
-              { href: "/vendor/services", icon: Wrench, label: "Service Packages" },
+              { href: "/vendor/listings", icon: Store, label: "My Listings" },
             ].map(({ href, icon: Icon, label }) => {
-              const active = pathname === href;
+              const active = pathname === href || pathname.startsWith(href + "/");
               return (
                 <Link
                   key={href}
