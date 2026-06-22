@@ -111,7 +111,12 @@ export default function AdminDashboard() {
   // Filters & Actions
   const [selectedVenueId, setSelectedVenueId] = useState<string>("all");
   const [vendorFilter, setVendorFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [approvalSearch, setApprovalSearch] = useState("");
+  const [approvalLocation, setApprovalLocation] = useState("");
   const [listingSearch, setListingSearch] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [rejectionModal, setRejectionModal] = useState<{ isOpen: boolean; profileId: number | null; reason: string }>({
     isOpen: false,
     profileId: null,
@@ -221,6 +226,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleListingStatus = async (listingId: number, currentStatus: string) => {
+    const nextStatus = currentStatus === "active" ? "suspended" : "active";
+    setSubmitting(true);
+    try {
+      const res = await api.patch(`/listings/admin/${listingId}/`, {
+        status: nextStatus
+      });
+      setListings(prev => prev.map(item => item.id === listingId ? { ...item, status: nextStatus } : item));
+      triggerToast(res.data?.message || `Listing status updated to ${nextStatus}.`);
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to update listing status.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const venuesList = useMemo(() => {
     const venuesMap = new Map<number, string>();
     inquiries.forEach(inq => {
@@ -248,25 +269,60 @@ export default function AdminDashboard() {
 
   const filteredVendors = useMemo(() => {
     return vendors.filter(v => {
-      if (vendorFilter === "all") return true;
-      if (vendorFilter === "approved") return v.is_approved;
-      if (vendorFilter === "rejected") return !v.is_approved && !!v.rejection_reason;
-      if (vendorFilter === "pending") return !v.is_approved && !v.rejection_reason;
+      // 1. Status Filter
+      if (vendorFilter === "approved" && !v.is_approved) return false;
+      if (vendorFilter === "rejected" && (v.is_approved || !v.rejection_reason)) return false;
+      if (vendorFilter === "pending" && (v.is_approved || !!v.rejection_reason)) return false;
+
+      // 2. Name Search
+      if (approvalSearch) {
+        const query = approvalSearch.toLowerCase();
+        const matchesName = (v.full_name && v.full_name.toLowerCase().includes(query)) || 
+                            (v.business_name && v.business_name.toLowerCase().includes(query)) || 
+                            (v.email && v.email.toLowerCase().includes(query)) ||
+                            (v.phone && v.phone.toLowerCase().includes(query));
+        if (!matchesName) return false;
+      }
+
+      // 3. Location Search
+      if (approvalLocation) {
+        const query = approvalLocation.toLowerCase();
+        const matchesLoc = (v.city && v.city.toLowerCase().includes(query)) || 
+                           (v.state && v.state.toLowerCase().includes(query));
+        if (!matchesLoc) return false;
+      }
+
       return true;
     });
-  }, [vendors, vendorFilter]);
+  }, [vendors, vendorFilter, approvalSearch, approvalLocation]);
 
   const filteredListings = useMemo(() => {
     return listings.filter(item => {
-      const query = listingSearch.toLowerCase();
-      return (
-        item.name.toLowerCase().includes(query) ||
-        item.service_type.toLowerCase().includes(query) ||
-        item.vendor_business_name.toLowerCase().includes(query) ||
-        item.city.toLowerCase().includes(query)
-      );
+      // 1. Text Search (Vendor Name / Listing Name)
+      if (listingSearch) {
+        const query = listingSearch.toLowerCase();
+        const matchesName = item.name.toLowerCase().includes(query) ||
+                            item.vendor_business_name.toLowerCase().includes(query);
+        if (!matchesName) return false;
+      }
+
+      // 2. Location Search
+      if (locationFilter) {
+        const query = locationFilter.toLowerCase();
+        const matchesLoc = item.city.toLowerCase().includes(query) ||
+                           item.state.toLowerCase().includes(query);
+        if (!matchesLoc) return false;
+      }
+
+      // 3. Category Filter
+      if (categoryFilter !== "all" && item.service_type !== categoryFilter) return false;
+
+      // 4. Status Filter
+      if (statusFilter !== "all" && item.status !== statusFilter) return false;
+
+      return true;
     });
-  }, [listings, listingSearch]);
+  }, [listings, listingSearch, locationFilter, categoryFilter, statusFilter]);
 
   const renderDetailBadges = (details: any) => {
     if (!details) return <span className="text-gray-400 italic text-[11px]">No specific details logged</span>;
@@ -478,6 +534,29 @@ export default function AdminDashboard() {
           {/* TAB 1: APPROVALS */}
           {activeTab === "approvals" && (
             <div className="space-y-6">
+              {/* Search & Location Filtering for Approvals */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-gray-150 shadow-sm">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Search by business name, owner, phone, email..."
+                    value={approvalSearch}
+                    onChange={(e) => setApprovalSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                  />
+                </div>
+                <div className="relative">
+                  <Filter className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Filter by city, state..."
+                    value={approvalLocation}
+                    onChange={(e) => setApprovalLocation(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                  />
+                </div>
+              </div>
               
               {/* Internal Filtering Buttons */}
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -622,19 +701,93 @@ export default function AdminDashboard() {
             <div className="space-y-6">
               
               {/* Search & Statistics */}
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="relative w-full max-w-sm">
-                  <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
-                  <input
-                    type="text"
-                    placeholder="Search by name, category, location or owner..."
-                    value={listingSearch}
-                    onChange={(e) => setListingSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
-                  />
+              <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-gray-150 shadow-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                    <input
+                      type="text"
+                      placeholder="Search by listing name or vendor business..."
+                      value={listingSearch}
+                      onChange={(e) => setListingSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                    <input
+                      type="text"
+                      placeholder="Filter by location / city..."
+                      value={locationFilter}
+                      onChange={(e) => setLocationFilter(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                    />
+                  </div>
                 </div>
-                <span className="text-[11px] font-bold text-gray-400">
-                  Total Catalog size: {filteredListings.length} listing(s)
+
+                {/* Category Filtering Chips */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Category:</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[
+                      { code: "all", label: "All" },
+                      { code: "venue", label: "Venues" },
+                      { code: "caterer", label: "Caterers" },
+                      { code: "decorator", label: "Decorators" },
+                      { code: "dj", label: "DJs" },
+                      { code: "planner", label: "Planners" },
+                      { code: "photographer", label: "Photographers" },
+                      { code: "makeup", label: "Makeup Artists" }
+                    ].map(cat => (
+                      <button
+                        key={cat.code}
+                        onClick={() => setCategoryFilter(cat.code)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                          categoryFilter === cat.code
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status Filtering Chips */}
+                <div className="flex items-center gap-3 flex-wrap border-t border-gray-200/60 pt-3">
+                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status:</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[
+                      { code: "all", label: "All Statuses" },
+                      { code: "active", label: "Active" },
+                      { code: "suspended", label: "Suspended" },
+                      { code: "draft", label: "Draft" },
+                      { code: "pending_approval", label: "Pending Approval" }
+                    ].map(st => (
+                      <button
+                        key={st.code}
+                        onClick={() => setStatusFilter(st.code)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                          statusFilter === st.code
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Listings Tab Count Info */}
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[11px] font-semibold text-gray-400">
+                  Showing {filteredListings.length} listing(s)
+                </span>
+                <span className="text-[11px] font-bold text-indigo-600">
+                  Total Catalog size: {listings.length}
                 </span>
               </div>
 
@@ -657,6 +810,7 @@ export default function AdminDashboard() {
                         <th className="p-4 font-bold">Location</th>
                         <th className="p-4 font-bold">Status</th>
                         <th className="p-4 font-bold">Service Details</th>
+                        <th className="p-4 font-bold text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -693,6 +847,25 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-4 max-w-[320px]">
                             {renderDetailBadges(listing.details)}
+                          </td>
+                          <td className="p-4 text-right">
+                            {listing.status === "active" ? (
+                              <button
+                                onClick={() => handleToggleListingStatus(listing.id, listing.status)}
+                                disabled={submitting}
+                                className="px-2.5 py-1 text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-150 rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-55"
+                              >
+                                <X size={11} /> Suspend / Deactivate
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleListingStatus(listing.id, listing.status)}
+                                disabled={submitting}
+                                className="px-2.5 py-1 text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors inline-flex items-center gap-1 shadow-sm disabled:opacity-55"
+                              >
+                                <Check size={11} /> Approve / Activate
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
