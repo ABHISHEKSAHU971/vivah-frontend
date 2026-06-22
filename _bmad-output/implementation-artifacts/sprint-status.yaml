@@ -60,9 +60,10 @@ development_status:
   3-3-booking-management-dashboard: backlog
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-vendor-approval-rest-apis-backend: backlog
-  4-2-vendor-approval-interface-frontend: backlog
-  4-3-platform-defaults-package-configuration-backend-and-frontend: backlog
-  4-4-platform-metrics-dashboard-api-and-ui: backlog
+  epic-4: done
+  4-1-vendor-approval-rest-apis-backend: done
+  4-2-vendor-approval-interface-frontend: done
+  4-3-platform-defaults-package-configuration-backend-and-frontend: done
+  4-4-platform-metrics-dashboard-api-and-ui: done
   epic-4-retrospective: optional
+

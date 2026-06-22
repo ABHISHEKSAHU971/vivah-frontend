@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/store/store";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 
+import { api } from "@/lib/api";
+
 export default function AdminLogin() {
   const router = useRouter();
   const setToken = useStore((s) => s.setToken);
@@ -12,16 +14,28 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      // Simulate admin login
-      document.cookie = "access_token=mock_admin_token; path=/";
-      document.cookie = "user_role=admin; path=/";
-      setToken("mock_admin_token", "admin");
-      router.push("/admin/dashboard");
-    } else {
+    setError("");
+    if (!email || !password) {
       setError("Please check your email and password credentials.");
+      return;
+    }
+
+    try {
+      const response = await api.post("/auth/admin/login/", { email, password });
+      const { access, refresh } = response.data.data;
+      
+      // Save tokens in cookies for middleware and localStorage for axios
+      document.cookie = `access_token=${access}; path=/; max-age=86400`;
+      document.cookie = `user_role=admin; path=/; max-age=86400`;
+      localStorage.setItem("refresh_token", refresh);
+      setToken(access, "admin");
+      
+      router.push("/admin/dashboard");
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Invalid admin credentials.";
+      setError(msg);
     }
   };
 

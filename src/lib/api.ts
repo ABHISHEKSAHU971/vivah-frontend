@@ -36,6 +36,9 @@ api.interceptors.response.use(
       } catch {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user_role");
+        document.cookie = "access_token=; path=/; max-age=0";
+        document.cookie = "user_role=; path=/; max-age=0";
         window.location.href = "/";
       }
     }
