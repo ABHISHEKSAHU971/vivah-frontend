@@ -46,9 +46,10 @@ export default function VendorRegister() {
       if (res.dev_otp) setDevOtp(res.dev_otp);
       setStep("otp");
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string; error?: string } } };
+      const axiosErr = err as { response?: { data?: { detail?: string; message?: string; error?: string } } };
       setError(
-        axiosErr.response?.data?.message ||
+        axiosErr.response?.data?.detail ||
+          axiosErr.response?.data?.message ||
           axiosErr.response?.data?.error ||
           "Failed to send OTP. Please try again."
       );
@@ -80,8 +81,8 @@ export default function VendorRegister() {
       router.push("/vendor/onboarding");
     } catch (err: unknown) {
       console.error("[verifyOtp error]", err);
-      const axiosErr = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
-      const serverMsg = axiosErr.response?.data?.message || axiosErr.response?.data?.error;
+      const axiosErr = err as { response?: { data?: { detail?: string; message?: string; error?: string } }; message?: string };
+      const serverMsg = axiosErr.response?.data?.detail || axiosErr.response?.data?.message || axiosErr.response?.data?.error;
       setError(serverMsg || axiosErr.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);

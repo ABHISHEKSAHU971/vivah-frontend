@@ -151,7 +151,7 @@ export default function AdminDashboard() {
 
     } catch (err: any) {
       console.error(err);
-      setErrorState(err.response?.data?.message || "Failed to load admin dashboard data. Please try again.");
+      setErrorState(err.response?.data?.detail || err.response?.data?.message || "Failed to load admin dashboard data. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -198,7 +198,7 @@ export default function AdminDashboard() {
       setVendors(prev => prev.map(v => v.id === profileId ? { ...v, is_approved: true, rejection_reason: "" } : v));
       triggerToast(res.data?.message || "Vendor profile approved successfully!");
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to approve vendor.");
+      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to approve vendor.");
     } finally {
       setSubmitting(false);
     }
@@ -220,7 +220,7 @@ export default function AdminDashboard() {
       setRejectionModal({ isOpen: false, profileId: null, reason: "" });
       triggerToast(res.data?.message || "Vendor profile rejected.");
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to reject vendor.");
+      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to reject vendor.");
     } finally {
       setSubmitting(false);
     }
@@ -236,7 +236,7 @@ export default function AdminDashboard() {
       setListings(prev => prev.map(item => item.id === listingId ? { ...item, status: nextStatus } : item));
       triggerToast(res.data?.message || `Listing status updated to ${nextStatus}.`);
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to update listing status.");
+      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to update listing status.");
     } finally {
       setSubmitting(false);
     }

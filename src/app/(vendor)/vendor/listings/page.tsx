@@ -30,7 +30,8 @@ export default function VendorListingsPage() {
       })
       .catch((err) => {
         console.error("Fetch listings error:", err);
-        setError("Could not load your listings. Please try again.");
+        const serverMsg = err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error;
+        setError(serverMsg || "Could not load your listings. Please try again.");
       })
       .finally(() => setLoading(false));
   }, []);

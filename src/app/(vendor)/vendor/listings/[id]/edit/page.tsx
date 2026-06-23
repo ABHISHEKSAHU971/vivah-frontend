@@ -104,7 +104,8 @@ function EditListingForm() {
       })
       .catch((err) => {
         console.error("Fetch listing details error:", err);
-        setErrorMsg("Failed to retrieve listing information. Please refresh.");
+        const serverMsg = err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error;
+        setErrorMsg(serverMsg || "Failed to retrieve listing information. Please refresh.");
       })
       .finally(() => setFetching(false));
   }, [id]);
@@ -265,7 +266,7 @@ function EditListingForm() {
         setFormErrors(flat);
         setErrorMsg("Please fix the validation errors below.");
       } else {
-        setErrorMsg(err.response?.data?.message || "An unexpected error occurred. Please try again.");
+        setErrorMsg(err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error || "An unexpected error occurred. Please try again.");
       }
     } finally {
       setLoading(false);

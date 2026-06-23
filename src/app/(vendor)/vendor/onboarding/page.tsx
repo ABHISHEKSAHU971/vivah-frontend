@@ -73,7 +73,7 @@ export default function VendorOnboarding() {
       router.push("/vendor/profile");
     } catch (err: unknown) {
       const axiosErr = err as {
-        response?: { data?: { message?: string; error?: string; errors?: Record<string, string[]> } };
+        response?: { data?: { detail?: string; message?: string; error?: string; errors?: Record<string, string[]> } };
       };
       const errs = axiosErr.response?.data?.errors;
       if (errs) {
@@ -81,7 +81,8 @@ export default function VendorOnboarding() {
         setError(`${first[0]}: ${first[1][0]}`);
       } else {
         setError(
-          axiosErr.response?.data?.message ||
+          axiosErr.response?.data?.detail ||
+            axiosErr.response?.data?.message ||
             axiosErr.response?.data?.error ||
             "Onboarding failed. Please try again."
         );
