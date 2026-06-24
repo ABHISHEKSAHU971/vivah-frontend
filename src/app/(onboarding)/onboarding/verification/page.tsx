@@ -56,7 +56,7 @@ export default function VerificationPage() {
 
     try {
       // Dispatches API request to backend verify endpoint
-      const response = await api.post("/auth/otp/verify/", { phone: inputPhone, otp })
+      const response = await api.post("/auth/otp/verify/", { phone: inputPhone, otp_code: otp })
         .catch(() => ({
           data: {
             status: "success",

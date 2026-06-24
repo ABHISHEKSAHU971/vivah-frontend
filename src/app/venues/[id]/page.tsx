@@ -126,7 +126,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   const verifyOtpMutation = useMutation({
     mutationFn: async (payload: { phone: string; otp: string }) => {
-      const response = await api.post("/auth/otp/verify/", payload).catch((err) => {
+      const response = await api.post("/auth/otp/verify/", {
+        phone: payload.phone,
+        otp_code: payload.otp
+      }).catch((err) => {
         console.warn("Using mock verify-otp fallback", err);
         return {
           data: {
