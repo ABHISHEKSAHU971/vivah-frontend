@@ -159,6 +159,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       guest_count: number;
       event_date: string;
       venue: number;
+      message: string;
     }) => {
       const response = await api.post("/bookings/inquiries/", payload).catch((err) => {
         console.warn("Using mock inquiry creation fallback", err);
@@ -220,10 +221,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       submitInquiryMutation.mutate(
         {
           name: storeUser?.full_name || formData.name || "Customer",
-          phone: storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`,
+          phone: storeUser?.phone || storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`,
           guest_count: Number(guests),
           event_date: eventDate,
           venue: venueId,
+          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Theme Upgrade = ${selectedTheme}.`,
         },
         {
           onSuccess: () => {
@@ -362,6 +364,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               guest_count: Number(formData.guestCount),
               event_date: formData.eventDate,
               venue: venueId,
+              message: `Unlock Quote Inquiry for ${venue.name}. Event Date: ${formData.eventDate}, Guests: ${formData.guestCount}.`,
             },
             {
               onSuccess: () => {
