@@ -18,6 +18,12 @@ const MOCK_VENUE_DATA: Record<number, any> = {
   3: { id: 3, name: "Shree Residency", venue_type: "Heritage Hotel", city: "Jaipur", state: "Rajasthan", price_per_day: "175000.00", avg_rating: "4.9", total_bookings: 213, guests: 300, is_ac: true, has_parking: true, description: "Immerse your guests in Royal Rajasthani heritage. Features hand-painted fresco ceilings, beautiful inner courtyard architecture, and custom local folk packages.", image: "https://images.unsplash.com/photo-1510076857177-7470076d4098?w=800&q=80" },
 };
 
+const INHOUSE_THEMES = [
+  { id: "standard", name: "Standard Theme", price: 0, tier: "low" },
+  { id: "royal", name: "Premium Royal Theme", price: 25000, tier: "average" },
+  { id: "floral", name: "Exotic Floral Theme", price: 40000, tier: "high" }
+];
+
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const venueId = Number(unwrappedParams.id);
@@ -55,24 +61,54 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [decorType, setDecorType] = useState<"inhouse" | "external" | "none">("inhouse");
   const [selectedTheme, setSelectedTheme] = useState<string>("standard");
 
-  // Fetch pricing configs
+  // External package customizer states
+  const [selectedCateringPkgId, setSelectedCateringPkgId] = useState<string>("");
+  const [selectedDecorPkgId, setSelectedDecorPkgId] = useState<string>("");
+  const [selectedDecorTier, setSelectedDecorTier] = useState<string>("average");
+
+  // Fetch pricing configs with parameters
   const { data: pricingConfig, isLoading: isPricingLoading } = useQuery({
-    queryKey: ["pricingConfig", venueId, isVerified],
+    queryKey: [
+      "pricingConfig", 
+      venueId, 
+      isVerified, 
+      guests, 
+      decorType, 
+      selectedCateringPkgId, 
+      selectedDecorPkgId, 
+      selectedDecorTier,
+      selectedTheme
+    ],
     queryFn: async () => {
-      const response = await api.get(`/venues/${venueId}/pricing-breakdown/`).catch((err) => {
+      const params: any = {
+        guest_count: guests,
+        decor_type: decorType,
+      };
+      if (decorType === "external") {
+        if (selectedCateringPkgId) params.catering_package_id = selectedCateringPkgId;
+        if (selectedDecorPkgId) params.decoration_package_id = selectedDecorPkgId;
+        params.decoration_tier = selectedDecorTier;
+      } else if (decorType === "inhouse") {
+        const themeTierMap: Record<string, string> = {
+          standard: "low",
+          royal: "average",
+          floral: "high",
+        };
+        params.decoration_tier = themeTierMap[selectedTheme] || "average";
+      }
+
+      const response = await api.get(`/venues/${venueId}/pricing-breakdown/`, { params }).catch((err) => {
         console.warn("Using mock pricing-breakdown fallback", err);
         return {
           data: {
-            base_rent: Number(venue.price_per_day),
-            catering_veg_plate: 600,
-            inhouse_decor_base: 50000,
-            external_royalty: 30000,
-            gst_rate: 0.18,
-            themes: [
-              { id: "standard", name: "Standard Theme", price: 0 },
-              { id: "royal", name: "Premium Royal Theme", price: 25000 },
-              { id: "floral", name: "Exotic Floral Theme", price: 40000 }
-            ]
+            venue_rent: Number(venue.price_per_day),
+            catering_total: decorType !== "none" ? guests * 600 : 0,
+            decor_total: decorType === "inhouse" 
+              ? (selectedTheme === "royal" ? 75000 : selectedTheme === "floral" ? 90000 : 50000)
+              : decorType === "external" ? 30000 : 0,
+            royalty: decorType !== "none" ? (Number(venue.price_per_day) + (decorType === "inhouse" ? 50000 : 30000)) * 0.05 : 0,
+            gst: (Number(venue.price_per_day) + (decorType !== "none" ? guests * 600 : 0)) * 0.18,
+            total: (Number(venue.price_per_day) + (decorType !== "none" ? guests * 600 : 0)) * 1.18,
           }
         };
       });
@@ -80,6 +116,44 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     },
     enabled: isVerified,
   });
+
+  // Fetch available external catering packages
+  const { data: cateringPackages } = useQuery({
+    queryKey: ["cateringPackages", venueId, eventDate],
+    queryFn: async () => {
+      const response = await api.get(`/catering/catering-packages/available/`, {
+        params: { venue_id: venueId, date: eventDate || undefined }
+      });
+      return response.data;
+    },
+    enabled: isVerified && decorType === "external",
+  });
+
+  // Fetch available external decoration packages
+  const { data: decorationPackages } = useQuery({
+    queryKey: ["decorationPackages", venueId, eventDate],
+    queryFn: async () => {
+      const response = await api.get(`/decorations/decoration-packages/available/`, {
+        params: { venue_id: venueId, date: eventDate || undefined }
+      });
+      return response.data;
+    },
+    enabled: isVerified && decorType === "external",
+  });
+
+  // Auto-select first catering package when loaded
+  useEffect(() => {
+    if (cateringPackages && cateringPackages.length > 0 && !selectedCateringPkgId) {
+      setSelectedCateringPkgId(String(cateringPackages[0].id));
+    }
+  }, [cateringPackages, selectedCateringPkgId]);
+
+  // Auto-select first decoration package when loaded
+  useEffect(() => {
+    if (decorationPackages && decorationPackages.length > 0 && !selectedDecorPkgId) {
+      setSelectedDecorPkgId(String(decorationPackages[0].id));
+    }
+  }, [decorationPackages, selectedDecorPkgId]);
 
   // Sync state from Zustand and form when verification completes
   useEffect(() => {
@@ -117,6 +191,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const sendOtpMutation = useMutation({
     mutationFn: async (payload: { phone: string }) => {
       const response = await api.post("/auth/otp/send/", payload).catch((err) => {
+        if (err.response) throw err;
         console.warn("Using mock send-otp fallback", err);
         return { data: { status: "success", message: "Mock OTP sent successfully.", dev_otp: "1234" } };
       });
@@ -130,6 +205,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         phone: payload.phone,
         otp_code: payload.otp
       }).catch((err) => {
+        if (err.response) throw err;
         console.warn("Using mock verify-otp fallback", err);
         return {
           data: {
@@ -159,9 +235,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       guest_count: number;
       event_date: string;
       venue: number;
+      catering_package?: number | null;
+      decoration_package?: number | null;
       message: string;
     }) => {
       const response = await api.post("/bookings/inquiries/", payload).catch((err) => {
+        if (err.response) throw err;
         console.warn("Using mock inquiry creation fallback", err);
         return { data: { status: "success", message: "Mock Inquiry created successfully." } };
       });
@@ -169,43 +248,46 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     }
   });
 
-  const pricing = pricingConfig?.data || pricingConfig || {
-    base_rent: Number(venue.price_per_day),
-    catering_veg_plate: 600,
-    inhouse_decor_base: 50000,
-    external_royalty: 30000,
-    gst_rate: 0.18,
-    themes: [
-      { id: "standard", name: "Standard Theme", price: 0 },
-      { id: "royal", name: "Premium Royal Theme", price: 25000 },
-      { id: "floral", name: "Exotic Floral Theme", price: 40000 }
-    ]
-  };
-
   const calculatePricing = (pkgGuests: number, pkgDecorType: "inhouse" | "external" | "none", pkgThemeId: string) => {
     const rent = Number(venue.price_per_day);
     let catering = 0;
     let decor = 0;
     
     if (pkgDecorType !== "none") {
-      catering = pkgGuests * (pricing.catering_veg_plate || 600);
+      catering = pkgGuests * 600;
       if (pkgDecorType === "inhouse") {
-        const themeObj = pricing.themes?.find((t: any) => t.id === pkgThemeId);
+        const themeObj = INHOUSE_THEMES.find((t: any) => t.id === pkgThemeId);
         const themePrice = themeObj ? themeObj.price : 0;
-        decor = (pricing.inhouse_decor_base || 50000) + themePrice;
+        decor = 50000 + themePrice;
       } else {
-        decor = pricing.external_royalty || 30000;
+        decor = 30000;
       }
     }
     
     const subtotal = rent + catering + decor;
-    const gst = subtotal * (pricing.gst_rate || 0.18);
+    const gst = subtotal * 0.18;
     const total = subtotal + gst;
     
     return { rent, catering, decor, subtotal, gst, total };
   };
 
-  const currentDetails = calculatePricing(guests, decorType, selectedTheme);
+  const currentDetails = pricingConfig ? {
+    rent: pricingConfig.venue_rent,
+    catering: pricingConfig.catering_total,
+    decor: pricingConfig.decor_total,
+    royalty: pricingConfig.royalty || 0,
+    subtotal: pricingConfig.venue_rent + pricingConfig.catering_total + pricingConfig.decor_total,
+    gst: pricingConfig.gst,
+    total: pricingConfig.total
+  } : {
+    rent: Number(venue.price_per_day),
+    catering: 0,
+    decor: 0,
+    royalty: 0,
+    subtotal: Number(venue.price_per_day),
+    gst: 0,
+    total: Number(venue.price_per_day)
+  };
 
   const pkg1 = calculatePricing(guests, "none", "standard");
   const pkg2 = calculatePricing(guests, "inhouse", selectedTheme);
@@ -225,7 +307,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           guest_count: Number(guests),
           event_date: eventDate,
           venue: venueId,
-          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Theme Upgrade = ${selectedTheme}.`,
+          catering_package: decorType === "external" && selectedCateringPkgId ? Number(selectedCateringPkgId) : null,
+          decoration_package: decorType === "external" && selectedDecorPkgId ? Number(selectedDecorPkgId) : null,
+          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Catering Package = ${selectedCateringPkgId || "inhouse"}, Decoration Package = ${selectedDecorPkgId || "inhouse"}.`,
         },
         {
           onSuccess: () => {
@@ -368,12 +452,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             },
             {
               onSuccess: () => {
-                setSuccess(true);
                 setIsModalOpen(false);
               },
               onError: (inqErr) => {
                 console.error("Failed to submit inquiry lead", inqErr);
-                setSuccess(true);
                 setIsModalOpen(false);
               }
             }
@@ -525,12 +607,67 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             onChange={(e) => setSelectedTheme(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
                           >
-                            {pricing.themes?.map((theme: any) => (
+                            {INHOUSE_THEMES.map((theme: any) => (
                               <option key={theme.id} value={theme.id}>
                                 {theme.name} (+₹{theme.price.toLocaleString("en-IN")})
                               </option>
                             ))}
                           </select>
+                        </div>
+                      )}
+
+                      {decorType === "external" && (
+                        <div className="space-y-3 font-body">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">External Caterer</label>
+                            <select
+                              value={selectedCateringPkgId}
+                              onChange={(e) => setSelectedCateringPkgId(e.target.value)}
+                              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                            >
+                              <option value="">-- Select Caterer --</option>
+                              {cateringPackages?.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.vendor_name || "External Caterer"} - {pkg.name} (₹{Number(pkg.price_per_plate).toLocaleString("en-IN")}/plate)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">External Decorator</label>
+                            <select
+                              value={selectedDecorPkgId}
+                              onChange={(e) => setSelectedDecorPkgId(e.target.value)}
+                              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                            >
+                              <option value="">-- Select Decorator --</option>
+                              {decorationPackages?.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.vendor_name || "External Decorator"} - {pkg.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {selectedDecorPkgId && (
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Decoration Tier</label>
+                              <select
+                                value={selectedDecorTier}
+                                onChange={(e) => setSelectedDecorTier(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                              >
+                                {decorationPackages
+                                  ?.find((pkg: any) => String(pkg.id) === String(selectedDecorPkgId))
+                                  ?.tiers?.map((tier: any) => (
+                                    <option key={tier.id} value={tier.tier}>
+                                      {tier.tier.toUpperCase()} (₹{Number(tier.price).toLocaleString("en-IN")})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -547,10 +684,16 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             <span>₹{currentDetails.catering.toLocaleString("en-IN")}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>{decorType === "inhouse" ? "In-house Decor" : "External Vendor Royalty"}</span>
+                            <span>{decorType === "inhouse" ? "In-house Decor" : "External Vendor Decor/Royalty"}</span>
                             <span>₹{currentDetails.decor.toLocaleString("en-IN")}</span>
                           </div>
                         </>
+                      )}
+                      {currentDetails.royalty > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Platform Service Fee (5%)</span>
+                          <span>₹{currentDetails.royalty.toLocaleString("en-IN")}</span>
+                        </div>
                       )}
                       <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
                         <span>Subtotal</span>
@@ -699,7 +842,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         <Check size={12} className="text-emerald-500" /> Catering Veg ({guests} plates)
                       </li>
                       <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Decor Theme: <span className="font-semibold text-amber-600">{pricing.themes?.find((t: any) => t.id === selectedTheme)?.name || "Standard"}</span>
+                        <Check size={12} className="text-emerald-500" /> Decor Theme: <span className="font-semibold text-amber-600">{INHOUSE_THEMES.find((t: any) => t.id === selectedTheme)?.name || "Standard"}</span>
                       </li>
                     </ul>
                   </div>
@@ -824,7 +967,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
               {/* STEP 1: Details Form */}
               {modalStep === 1 ? (
-                <form onSubmit={handleStep1Submit} className="space-y-4">
+                <form onSubmit={handleStep1Submit} className="space-y-4" noValidate>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Your Name</label>
                     <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl focus-within:border-amber-500 focus-within:bg-white transition-all duration-200">

@@ -147,4 +147,85 @@ test.describe('Gated Pricing E2E Flow', () => {
     expect(dbOutput).toContain('+919999933333');
     expect(dbOutput).toContain('300');
   });
+
+  test('Verified user selecting external packages should update pricing and record package IDs in DB', async ({ page }) => {
+    
+    // 1. Navigate to details page for venue 1
+    await page.goto('/venues/1');
+    await expect(page.getByText('Pricing Locked')).toBeVisible();
+
+    // 2. Unlock quote
+    await page.click('button:has-text("Unlock Quote")');
+    await page.locator('input[placeholder="John Doe"]').fill('External E2E Tester');
+    await page.locator('input[placeholder="98765 43210"]').fill('9999944444');
+    await page.locator('input[placeholder="e.g. 150"]').fill('250');
+    await page.locator('input[type="date"]').fill('2026-11-20');
+
+    const sendOtpPromise = page.waitForResponse(response => 
+      response.url().includes('/auth/otp/send/') && response.request().method() === 'POST'
+    );
+    await page.click('button:has-text("Request OTP to Unlock Quote")');
+    const sendOtpResponse = await sendOtpPromise;
+    const sendOtpJson = await sendOtpResponse.json();
+    const devOtp = sendOtpJson.data?.dev_otp || sendOtpJson.dev_otp;
+    
+    expect(devOtp).toBeDefined();
+
+    const otpInputs = page.locator('input[inputmode="numeric"]');
+    for (let i = 0; i < 4; i++) {
+      await otpInputs.nth(i).fill(devOtp[i]);
+    }
+    await page.click('button:has-text("Verify & Unlock Quote")');
+    
+    await expect(page.getByText('Unlock Detailed Quote')).toBeHidden();
+    await expect(page.getByText('Pricing Locked')).toBeHidden();
+
+    // 3. Click "External Vendor" button under Decor Choice to reveal external selectors
+    await page.click('button:has-text("External Vendor")');
+
+    // Wait for available catering packages to be fetched and dropdowns to render
+    const cateringSelect = page.locator('label:has-text("External Caterer") + select');
+    await expect(cateringSelect).toBeVisible();
+    
+    // Select the first external caterer
+    await cateringSelect.selectOption({ index: 1 });
+
+    // Wait for available decoration packages to be fetched and dropdowns to render
+    const decorSelect = page.locator('label:has-text("External Decorator") + select');
+    await expect(decorSelect).toBeVisible();
+    await decorSelect.selectOption({ index: 1 });
+
+    // Wait for tier selector
+    const tierSelect = page.locator('label:has-text("Decoration Tier") + select');
+    await expect(tierSelect).toBeVisible();
+    await tierSelect.selectOption('high');
+
+    // Wait for pricing update breakdown
+    await page.waitForTimeout(500);
+
+    // Verify subtotal and total quotes are loaded and valid numbers
+    const totalQuoteText = page.locator('span:has-text("Total Quote") + span');
+    const totalVal = await totalQuoteText.innerText();
+    expect(totalVal).toContain('₹');
+
+    // 4. Click "Request Site Visit" -> verify database contains lead with package IDs
+    const requestVisitBtn = page.getByRole('button', { name: 'Request Site Visit' });
+    await expect(requestVisitBtn).toBeVisible();
+    await requestVisitBtn.click();
+    
+    await expect(page.getByText('Site Visit Request Received!')).toBeVisible();
+
+    // Run verification query directly against the Django backend DB via Node child_process
+    const backendDir = path.resolve(__dirname, '../../vivah-backend/Vivah');
+    const pythonExe = path.join(backendDir, 'venv/Scripts/python.exe');
+    const managePy = path.join(backendDir, 'manage.py');
+    const queryCommand = `"${pythonExe}" "${managePy}" shell -c "from apps.venues.models import VenueInquiry; inquiry = VenueInquiry.objects.filter(phone=\'+919999944444\').first(); print((inquiry.name, inquiry.catering_package_id, inquiry.decoration_package_id) if inquiry else 'None')"`;
+    
+    const dbOutput = execSync(queryCommand, { cwd: backendDir }).toString().trim();
+    console.log("Database Inquiry Multi-Vendor Record:", dbOutput);
+    
+    expect(dbOutput).toContain('External E2E Tester');
+    // Verify it contains integer package IDs (not None)
+    expect(dbOutput).not.toContain('None, None');
+  });
 });
