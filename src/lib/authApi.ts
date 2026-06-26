@@ -199,4 +199,14 @@ export const vendorApi = {
     const { data } = await api.get("/auth/vendor/status/");
     return unwrap<VendorStatusData>(data);
   },
+
+  /**
+   * List approved/verified vendors (public endpoint).
+   */
+  listApprovedVendors: async (vendorType?: string): Promise<VendorProfileData[]> => {
+    const { data } = await api.get("/auth/vendor/list/", {
+      params: vendorType ? { vendor_type: vendorType } : {},
+    });
+    return unwrap<VendorProfileData[]>(data);
+  },
 };
