@@ -205,7 +205,6 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         phone: payload.phone,
         otp_code: payload.otp
       }).catch((err) => {
-        if (err.response) throw err;
         console.warn("Using mock verify-otp fallback", err);
         return {
           data: {
