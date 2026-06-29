@@ -22,11 +22,11 @@ export default function CTASection() {
         </p>
 
         <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-4">
-          <Link href="/login" className="btn-gold w-full sm:w-auto text-center justify-center">
-            Start Planning Now <ArrowRight size={15} />
+          <Link href="/venues" className="btn-gold w-full sm:w-auto text-center justify-center">
+            Explore Curated Venues <ArrowRight size={15} />
           </Link>
-          <Link href="/venues" className="btn-ghost w-full sm:w-auto text-center justify-center">
-            Explore Venues
+          <Link href="/services/catering" className="btn-ghost w-full sm:w-auto text-center justify-center">
+            Browse Services
           </Link>
         </div>
       </div>

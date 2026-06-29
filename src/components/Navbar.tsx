@@ -5,10 +5,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, ChevronDown } from "lucide-react";
 
-const NAV_LINKS = [
+interface NavLink {
+  label: string;
+  href: string | null;
+  sub?: string[];
+  badge?: string;
+}
+
+const NAV_LINKS: NavLink[] = [
   { label: "Venues", href: "/venues" },
   { label: "Services", href: "/services", sub: ["Catering", "Decorations", "DJ & Sound"] },
-  { label: "AI Planner", href: "/ai-planner", badge: "Beta" },
+  { label: "AI Planner", href: null, badge: "Coming Soon" },
   { label: "Vendors", href: "/vendor/login" },
 ];
 
@@ -147,7 +154,7 @@ export default function Navbar() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : link.href ? (
               <Link
                 key={link.label}
                 href={link.href}
@@ -169,23 +176,29 @@ export default function Navbar() {
                   </span>
                 )}
               </Link>
+            ) : (
+              <span
+                key={link.label}
+                className={`flex items-center gap-1.5 text-sm font-medium cursor-not-allowed opacity-60 ${
+                  showSolidNavbar ? "text-gray-400" : "text-white/40"
+                }`}
+              >
+                {link.label}
+                {link.badge && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ 
+                      background: "rgba(201,164,64,0.08)", 
+                      color: "var(--gold)", 
+                      border: "1px solid rgba(201,164,64,0.2)" 
+                    }}
+                  >
+                    {link.badge}
+                  </span>
+                )}
+              </span>
             )
           )}
-        </div>
-
-        {/* Desktop CTA */}
-        <div className="hidden md:flex items-center gap-4">
-          <Link 
-            href="/onboarding/verification" 
-            className={`text-sm font-medium transition-colors cursor-pointer ${
-              showSolidNavbar ? "text-gray-800 hover:text-gold" : "text-white/80 hover:text-white"
-            }`}
-          >
-            Sign In
-          </Link>
-          <Link href="/onboarding/verification" className="btn-gold text-sm cursor-pointer">
-            Start Planning
-          </Link>
         </div>
 
         {/* Mobile Toggle */}
@@ -247,7 +260,7 @@ export default function Navbar() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : link.href ? (
               <Link
                 key={link.label}
                 href={link.href}
@@ -266,28 +279,25 @@ export default function Navbar() {
                   </span>
                 )}
               </Link>
+            ) : (
+              <span
+                key={link.label}
+                className={`flex items-center justify-between py-3 text-sm font-medium border-b cursor-not-allowed opacity-60 ${
+                  showSolidNavbar ? "text-gray-400 border-gray-100" : "text-white/40 border-white/5"
+                }`}
+              >
+                {link.label}
+                {link.badge && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(201,164,64,0.08)", color: "var(--gold)", border: "1px solid rgba(201,164,64,0.2)" }}
+                  >
+                    {link.badge}
+                  </span>
+                )}
+              </span>
             )
           )}
-          <div className="mt-6 flex flex-col gap-3">
-            <Link 
-              href="/onboarding/verification" 
-              className={`text-center py-2.5 rounded text-xs font-semibold border transition-all ${
-                showSolidNavbar 
-                  ? "border-gray-200 text-gray-800 hover:bg-gray-50" 
-                  : "border-white/20 text-white hover:bg-white/10"
-              }`}
-              onClick={() => setMobileOpen(false)}
-            >
-              Sign In
-            </Link>
-            <Link 
-              href="/onboarding/verification" 
-              className="btn-gold text-center py-2.5 rounded text-xs font-semibold cursor-pointer animate-pulse" 
-              onClick={() => setMobileOpen(false)}
-            >
-              Start Planning
-            </Link>
-          </div>
         </div>
       )}
     </nav>
