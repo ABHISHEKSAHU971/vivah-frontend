@@ -177,3 +177,51 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 3px; }
+
+/* ─── Premium UI Extensions ────────────────────────────── */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #F2D07C 0%, #C9A440 50%, #9C7721 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.glass-premium {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(201, 164, 64, 0.15);
+  box-shadow: 0 12px 40px 0 rgba(5, 13, 26, 0.05);
+}
+
+.glass-premium-dark {
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(201, 164, 64, 0.2);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.3);
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Luxury card gold shadow */
+.shadow-gold-hover {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+.shadow-gold-hover:hover {
+  border-color: rgba(201, 164, 64, 0.45) !important;
+  box-shadow: 0 12px 32px rgba(201, 164, 64, 0.15);
+}

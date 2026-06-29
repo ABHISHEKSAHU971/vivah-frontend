@@ -54,7 +54,42 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-0.5 select-none">
+        <Link href="/" className="flex items-center gap-2 select-none group">
+          <svg
+            width="34"
+            height="34"
+            viewBox="0 0 100 100"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="shrink-0 transition-transform duration-500 group-hover:rotate-12"
+          >
+            <defs>
+              <linearGradient id="navbar-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#F2D07C" />
+                <stop offset="50%" stopColor="#C9A440" />
+                <stop offset="100%" stopColor="#9C7721" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M50 15 C35 30, 20 45, 20 60 C20 76.5, 33.5 90, 50 90 C66.5 90, 80 76.5, 80 60 C80 45, 65 30, 50 15 Z"
+              stroke="url(#navbar-gold-grad)"
+              strokeWidth="5"
+              fill="none"
+            />
+            <path
+              d="M50 30 C40 42, 32 55, 32 65 C32 75, 40 82, 50 82 C60 82, 68 75, 68 65 C68 55, 60 42, 50 30 Z"
+              stroke="url(#navbar-gold-grad)"
+              strokeWidth="3.5"
+              fill="none"
+              opacity="0.85"
+            />
+            <path
+              d="M50 45 C45 52, 40 60, 40 67 C40 73, 44 76, 50 76 C56 76, 60 73, 60 67 C60 60, 55 52, 50 45 Z"
+              fill="url(#navbar-gold-grad)"
+              opacity="0.9"
+            />
+            <circle cx="50" cy="62" r="3.5" fill={showSolidNavbar ? "var(--text-dark)" : "var(--white)"} className="transition-colors duration-300" />
+          </svg>
           <span
             className="font-heading font-semibold tracking-tight transition-colors duration-300"
             style={{ 
@@ -62,9 +97,8 @@ export default function Navbar() {
               color: showSolidNavbar ? "var(--text-dark)" : "var(--white)" 
             }}
           >
-            PlanMyVivah
+            PlanMy<span style={{ color: "var(--gold)" }}>Vivah</span>
           </span>
-          <span style={{ color: "var(--gold)", fontSize: "1.35rem", fontWeight: 700 }}>.</span>
         </Link>
 
         {/* Desktop Nav */}
@@ -88,11 +122,12 @@ export default function Navbar() {
                 </button>
                 {servicesOpen && (
                   <div
-                    className="absolute top-full mt-2 left-0 rounded-lg py-1.5 min-w-[180px] border transition-all duration-200"
+                    className="absolute top-full mt-2 left-0 rounded-lg py-1.5 min-w-[180px] border animate-fade-in-scale"
                     style={{
-                      background: showSolidNavbar ? "var(--white)" : "var(--navy-mid)",
-                      borderColor: showSolidNavbar ? "rgba(0,0,0,0.08)" : "rgba(201, 164, 64, 0.15)",
-                      boxShadow: showSolidNavbar ? "0 8px 32px rgba(0,0,0,0.08)" : "0 8px 32px rgba(0,0,0,0.4)",
+                      background: showSolidNavbar ? "rgba(255, 255, 255, 0.98)" : "rgba(10, 22, 40, 0.98)",
+                      borderColor: showSolidNavbar ? "rgba(201, 164, 64, 0.2)" : "rgba(201, 164, 64, 0.3)",
+                      backdropFilter: "blur(12px)",
+                      boxShadow: showSolidNavbar ? "0 8px 32px rgba(5,13,26,0.08)" : "0 8px 32px rgba(0,0,0,0.5)",
                     }}
                   >
                     {link.sub.map((s) => (

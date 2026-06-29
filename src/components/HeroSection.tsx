@@ -93,11 +93,13 @@ export default function HeroSection() {
 
         {/* Capsule Search Console */}
         <div
-          className="flex flex-col md:flex-row gap-4 md:gap-0 rounded-2xl md:rounded-full overflow-hidden w-full max-w-4xl p-3 md:p-2 border"
+          className="flex flex-col md:flex-row gap-4 md:gap-0 rounded-2xl md:rounded-full overflow-hidden w-full max-w-4xl p-3 md:p-2 border transition-all duration-300 hover:border-gold/45 hover:shadow-[0_12px_45px_rgba(201,164,64,0.15)]"
           style={{
-            background: "rgba(255, 255, 255, 0.96)",
-            borderColor: "rgba(201, 164, 64, 0.25)",
-            boxShadow: "0 12px 40px rgba(0,0,0,0.3)",
+            background: "rgba(255, 255, 255, 0.88)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderColor: "rgba(201, 164, 64, 0.22)",
+            boxShadow: "0 12px 40px rgba(5,13,26,0.25)",
           }}
         >
           {/* Location Selector */}
@@ -163,9 +165,9 @@ export default function HeroSection() {
           <button
             id="hero-search-btn"
             onClick={handleSearch}
-            className="btn-gold justify-center rounded-xl md:rounded-full md:px-8 py-3.5 cursor-pointer shrink-0 w-full md:w-auto"
+            className="btn-gold justify-center rounded-xl md:rounded-full md:px-8 py-3.5 cursor-pointer shrink-0 w-full md:w-auto active:scale-95 group/btn"
           >
-            <Search size={16} />
+            <Search size={16} className="transition-transform duration-300 group-hover/btn:scale-110" />
             Find Venues
           </button>
         </div>
