@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Palette, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
+import GatedBookingModal from "@/components/GatedBookingModal";
 
 const MOCK_DECORATORS = [
   { id: 101, name: "Vedic Mandaps", type: "Traditional Floral Setups", price_range: "80,000 - 2,50,000", rating: "4.8", packages: ["Fairy Light Walkway", "Marigold Floral Mandap", "Haldi Jhoola Canopy"], image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&q=80", city: "Bhopal" },
@@ -15,6 +16,8 @@ const MOCK_DECORATORS = [
 
 export default function DecorationsPage() {
   const [success, setSuccess] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDecorator, setSelectedDecorator] = useState<{ id: number; name: string } | null>(null);
 
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedDecorators"],
@@ -35,6 +38,11 @@ export default function DecorationsPage() {
         city: v.city,
       }))
     : MOCK_DECORATORS;
+
+  const handleBookClick = (decorator: any) => {
+    setSelectedDecorator({ id: decorator.id, name: decorator.name });
+    setIsModalOpen(true);
+  };
 
   return (
     <>
@@ -102,8 +110,8 @@ export default function DecorationsPage() {
                       </div>
                     ) : (
                       <button 
-                        onClick={() => setSuccess(d.id)}
-                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl"
+                        onClick={() => handleBookClick(d)}
+                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl cursor-pointer"
                       >
                         Request Consultation & Custom Quote <MessageSquare size={13} />
                       </button>
@@ -117,6 +125,17 @@ export default function DecorationsPage() {
         </div>
       </main>
       <Footer />
+
+      {selectedDecorator && (
+        <GatedBookingModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => setSuccess(selectedDecorator.id)}
+          vendorName={selectedDecorator.name}
+          serviceType="decorator"
+          decorationPackageId={selectedDecorator.id < 100 ? selectedDecorator.id : null}
+        />
+      )}
     </>
   );
 }

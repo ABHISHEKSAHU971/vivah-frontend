@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Music, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
+import GatedBookingModal from "@/components/GatedBookingModal";
 
 const MOCK_DJS = [
   { id: 101, name: "DJ Rohit & LED Sound", type: "Full Sound & Lighting", price: "45,000", rating: "4.8", gear: ["JBL VRX Line Array", "LED Stage backdrop", "Smoke & Spark Machines"], image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80", city: "Indore" },
@@ -15,6 +16,8 @@ const MOCK_DJS = [
 
 export default function DjSoundPage() {
   const [success, setSuccess] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDj, setSelectedDj] = useState<{ id: number; name: string } | null>(null);
 
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedDjs"],
@@ -35,6 +38,11 @@ export default function DjSoundPage() {
         city: v.city,
       }))
     : MOCK_DJS;
+
+  const handleBookClick = (dj: any) => {
+    setSelectedDj({ id: dj.id, name: dj.name });
+    setIsModalOpen(true);
+  };
 
   return (
     <>
@@ -71,7 +79,7 @@ export default function DjSoundPage() {
                       {dj.type}
                     </div>
                     {dj.city && (
-                      <div className="absolute top-4 right-4 bg-zinc-900/90 text-white px-2.5 py-1 rounded text-[11px] font-medium shadow-sm flex items-center gap-1">
+                      <div className="absolute top-4 right-4 bg-zinc-950/90 text-white px-2.5 py-1 rounded text-[11px] font-medium shadow-sm flex items-center gap-1">
                         <MapPin size={10} className="text-gold" /> {dj.city}
                       </div>
                     )}
@@ -102,8 +110,8 @@ export default function DjSoundPage() {
                       </div>
                     ) : (
                       <button 
-                        onClick={() => setSuccess(dj.id)}
-                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl"
+                        onClick={() => handleBookClick(dj)}
+                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl cursor-pointer"
                       >
                         Check Availability & Book DJ <MessageSquare size={13} />
                       </button>
@@ -117,6 +125,16 @@ export default function DjSoundPage() {
         </div>
       </main>
       <Footer />
+
+      {selectedDj && (
+        <GatedBookingModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => setSuccess(selectedDj.id)}
+          vendorName={selectedDj.name}
+          serviceType="dj"
+        />
+      )}
     </>
   );
 }

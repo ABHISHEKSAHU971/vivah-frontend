@@ -100,7 +100,11 @@ function EditListingForm() {
           state: item.state || "",
           address: item.address || "",
         });
-        setDetailForm(item.details || {});
+        const details = item.details || {};
+        if (["dj", "caterer"].includes(item.service_type) && !details.tier) {
+          details.tier = "medium";
+        }
+        setDetailForm(details);
       })
       .catch((err) => {
         console.error("Fetch listing details error:", err);
@@ -857,7 +861,7 @@ function EditListingForm() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
                   <select
-                    value={detailForm.tier}
+                    value={detailForm.tier || "medium"}
                     onChange={(e) => handleDetailChange("tier", e.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
                   >
@@ -940,7 +944,7 @@ function EditListingForm() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
                   <select
-                    value={detailForm.tier}
+                    value={detailForm.tier || "medium"}
                     onChange={(e) => handleDetailChange("tier", e.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
                   >

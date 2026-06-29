@@ -134,7 +134,7 @@ test.describe('Gated Pricing E2E Flow', () => {
     await expect(page.getByText('Site Visit Request Received!')).toBeVisible();
     
     // Run verification query directly against the Django backend DB via Node child_process
-    const backendDir = path.resolve(__dirname, '../../vivah-backend/Vivah');
+    const backendDir = path.resolve(__dirname, '../../celebrationplatform');
     const pythonExe = path.join(backendDir, 'venv/Scripts/python.exe');
     const managePy = path.join(backendDir, 'manage.py');
     const queryCommand = `"${pythonExe}" "${managePy}" shell -c "from apps.venues.models import VenueInquiry; print([(i.name, i.phone, i.guest_count) for i in VenueInquiry.objects.filter(phone=\'+919999933333\')])"`;
@@ -216,7 +216,7 @@ test.describe('Gated Pricing E2E Flow', () => {
     await expect(page.getByText('Site Visit Request Received!')).toBeVisible();
 
     // Run verification query directly against the Django backend DB via Node child_process
-    const backendDir = path.resolve(__dirname, '../../vivah-backend/Vivah');
+    const backendDir = path.resolve(__dirname, '../../celebrationplatform');
     const pythonExe = path.join(backendDir, 'venv/Scripts/python.exe');
     const managePy = path.join(backendDir, 'manage.py');
     const queryCommand = `"${pythonExe}" "${managePy}" shell -c "from apps.venues.models import VenueInquiry; inquiry = VenueInquiry.objects.filter(phone=\'+919999944444\').first(); print((inquiry.name, inquiry.catering_package_id, inquiry.decoration_package_id) if inquiry else 'None')"`;

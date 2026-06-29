@@ -155,6 +155,23 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [decorationPackages, selectedDecorPkgId]);
 
+  // Sync selectedDecorTier with available tiers when package changes
+  useEffect(() => {
+    if (decorationPackages && selectedDecorPkgId) {
+      const selectedPkg = decorationPackages.find(
+        (pkg: any) => String(pkg.id) === String(selectedDecorPkgId)
+      );
+      if (selectedPkg && selectedPkg.tiers && selectedPkg.tiers.length > 0) {
+        const hasCurrentTier = selectedPkg.tiers.some(
+          (t: any) => String(t.tier) === String(selectedDecorTier)
+        );
+        if (!hasCurrentTier) {
+          setSelectedDecorTier(selectedPkg.tiers[0].tier);
+        }
+      }
+    }
+  }, [selectedDecorPkgId, decorationPackages, selectedDecorTier]);
+
   // Sync state from Zustand and form when verification completes
   useEffect(() => {
     if (isVerified) {
@@ -205,6 +222,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         phone: payload.phone,
         otp_code: payload.otp
       }).catch((err) => {
+        if (err.response) throw err;
         console.warn("Using mock verify-otp fallback", err);
         return {
           data: {

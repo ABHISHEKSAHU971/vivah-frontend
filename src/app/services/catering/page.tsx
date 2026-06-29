@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Utensils, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
+import GatedBookingModal from "@/components/GatedBookingModal";
 
 const MOCK_CATERERS = [
   { id: 101, name: "Annapurna Caterers", type: "Veg & Jain Special", price_per_plate: "450", rating: "4.8", specialties: ["Traditional Rajasthani", "Gujarati Counters", "Custom Jain Menu"], image: "https://images.unsplash.com/photo-1555244162-803834f70033?w=600&q=80", city: "Indore" },
@@ -15,6 +16,8 @@ const MOCK_CATERERS = [
 
 export default function CateringPage() {
   const [success, setSuccess] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedCaterer, setSelectedCaterer] = useState<{ id: number; name: string } | null>(null);
 
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedCaterers"],
@@ -35,6 +38,11 @@ export default function CateringPage() {
         city: v.city,
       }))
     : MOCK_CATERERS;
+
+  const handleBookClick = (caterer: any) => {
+    setSelectedCaterer({ id: caterer.id, name: caterer.name });
+    setIsModalOpen(true);
+  };
 
   return (
     <>
@@ -102,8 +110,8 @@ export default function CateringPage() {
                       </div>
                     ) : (
                       <button 
-                        onClick={() => setSuccess(caterer.id)}
-                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl"
+                        onClick={() => handleBookClick(caterer)}
+                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl cursor-pointer"
                       >
                         Request Call & Menu Customization <MessageSquare size={13} />
                       </button>
@@ -117,6 +125,17 @@ export default function CateringPage() {
         </div>
       </main>
       <Footer />
+
+      {selectedCaterer && (
+        <GatedBookingModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => setSuccess(selectedCaterer.id)}
+          vendorName={selectedCaterer.name}
+          serviceType="catering"
+          cateringPackageId={selectedCaterer.id < 100 ? selectedCaterer.id : null}
+        />
+      )}
     </>
   );
 }
