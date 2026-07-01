@@ -99,16 +99,24 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
       const response = await api.get(`/venues/${venueId}/pricing-breakdown/`, { params }).catch((err) => {
         console.warn("Using mock pricing-breakdown fallback", err);
+        const rentVal = Number(venue.price_per_day);
+        const cateringVal = decorType !== "none" ? guests * 600 : 0;
+        const decorVal = decorType === "inhouse" 
+          ? (selectedTheme === "royal" ? 50000 : selectedTheme === "floral" ? 65000 : 25000)
+          : decorType === "external" ? 30000 : 0;
+        const subtotalVal = rentVal + cateringVal + decorVal;
+        const royaltyVal = subtotalVal * 0.05;
+        const gstVal = (subtotalVal + royaltyVal) * 0.18;
+        const totalVal = subtotalVal + royaltyVal + gstVal;
+
         return {
           data: {
-            venue_rent: Number(venue.price_per_day),
-            catering_total: decorType !== "none" ? guests * 600 : 0,
-            decor_total: decorType === "inhouse" 
-              ? (selectedTheme === "royal" ? 75000 : selectedTheme === "floral" ? 90000 : 50000)
-              : decorType === "external" ? 30000 : 0,
-            royalty: decorType !== "none" ? (Number(venue.price_per_day) + (decorType === "inhouse" ? 50000 : 30000)) * 0.05 : 0,
-            gst: (Number(venue.price_per_day) + (decorType !== "none" ? guests * 600 : 0)) * 0.18,
-            total: (Number(venue.price_per_day) + (decorType !== "none" ? guests * 600 : 0)) * 1.18,
+            venue_rent: rentVal,
+            catering_total: cateringVal,
+            decor_total: decorVal,
+            royalty: royaltyVal,
+            gst: gstVal,
+            total: totalVal,
           }
         };
       });
@@ -275,17 +283,18 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       if (pkgDecorType === "inhouse") {
         const themeObj = INHOUSE_THEMES.find((t: any) => t.id === pkgThemeId);
         const themePrice = themeObj ? themeObj.price : 0;
-        decor = 50000 + themePrice;
+        decor = 25000 + themePrice;
       } else {
         decor = 30000;
       }
     }
     
     const subtotal = rent + catering + decor;
-    const gst = subtotal * 0.18;
-    const total = subtotal + gst;
+    const royalty = subtotal * 0.05;
+    const gst = (subtotal + royalty) * 0.18;
+    const total = subtotal + royalty + gst;
     
-    return { rent, catering, decor, subtotal, gst, total };
+    return { rent, catering, decor, subtotal, royalty, gst, total };
   };
 
   const currentDetails = pricingConfig ? {
@@ -700,22 +709,41 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             <span>Catering ({guests} guests)</span>
                             <span>₹{currentDetails.catering.toLocaleString("en-IN")}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span>{decorType === "inhouse" ? "In-house Decor" : "External Vendor Decor/Royalty"}</span>
-                            <span>₹{currentDetails.decor.toLocaleString("en-IN")}</span>
-                          </div>
+                          {decorType === "inhouse" ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span>In-house Decor (Base Cost)</span>
+                                <span>
+                                  ₹{Math.max(0, currentDetails.decor - (selectedTheme === "royal" ? 25000 : selectedTheme === "floral" ? 40000 : 0)).toLocaleString("en-IN")}
+                                </span>
+                              </div>
+                              {selectedTheme !== "standard" && (
+                                <div className="flex justify-between text-gray-500">
+                                  <span>Theme: {INHOUSE_THEMES.find((t: any) => t.id === selectedTheme)?.name || selectedTheme}</span>
+                                  <span>
+                                    ₹{(selectedTheme === "royal" ? 25000 : selectedTheme === "floral" ? 40000 : 0).toLocaleString("en-IN")}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex justify-between">
+                              <span>External Vendor Decor/Royalty</span>
+                              <span>₹{currentDetails.decor.toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
                         </>
                       )}
+                      <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
+                        <span>Subtotal</span>
+                        <span>₹{currentDetails.subtotal.toLocaleString("en-IN")}</span>
+                      </div>
                       {currentDetails.royalty > 0 && (
                         <div className="flex justify-between text-gray-500">
                           <span>Platform Service Fee (5%)</span>
                           <span>₹{currentDetails.royalty.toLocaleString("en-IN")}</span>
                         </div>
                       )}
-                      <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
-                        <span>Subtotal</span>
-                        <span>₹{currentDetails.subtotal.toLocaleString("en-IN")}</span>
-                      </div>
                       <div className="flex justify-between text-[11px] text-gray-500">
                         <span>GST (18%)</span>
                         <span>₹{currentDetails.gst.toLocaleString("en-IN")}</span>
