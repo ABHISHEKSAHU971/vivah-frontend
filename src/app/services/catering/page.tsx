@@ -25,18 +25,25 @@ export default function CateringPage() {
   });
 
   const caterers = (dbVendors && dbVendors.length > 0)
-    ? dbVendors.map((v) => ({
-        id: v.id,
-        name: v.business_name,
-        type: v.vendor_type || "Catering Partner",
-        price_per_plate: "500", // Standard starting price
-        rating: "4.8",
-        specialties: v.description 
-          ? v.description.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3) 
-          : ["Custom Wedding Menus", "Multi-Cuisine", "Live Food Counters"],
-        image: v.logo || "https://images.unsplash.com/photo-1555244162-803834f70033?w=600&q=80",
-        city: v.city,
-      }))
+    ? dbVendors.map((v) => {
+        const biz = v.catering_business;
+        return {
+          id: v.id,
+          name: biz?.brand_name || v.business_name,
+          type: biz && biz.cuisines && biz.cuisines.length > 0
+            ? biz.cuisines.join(" & ")
+            : (v.vendor_type || "Catering Partner"),
+          price_per_plate: "500", // Standard starting price
+          rating: "4.8",
+          specialties: biz && biz.cuisines && biz.cuisines.length > 0
+            ? biz.cuisines.slice(0, 3)
+            : (v.description 
+                ? v.description.split(",").map((s: string) => s.trim()).filter(Boolean).slice(0, 3) 
+                : ["Custom Wedding Menus", "Multi-Cuisine", "Live Food Counters"]),
+          image: biz?.logo_url || v.logo || "https://images.unsplash.com/photo-1555244162-803834f70033?w=600&q=80",
+          city: biz?.city || v.city,
+        };
+      })
     : MOCK_CATERERS;
 
   const handleBookClick = (caterer: any) => {
@@ -95,7 +102,7 @@ export default function CateringPage() {
                       <div className="space-y-2">
                         <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Cuisine Specialties</p>
                         <div className="flex flex-wrap gap-2">
-                          {caterer.specialties.map((s, idx) => (
+                          {caterer.specialties.map((s: any, idx: number) => (
                             <span key={idx} className="bg-zinc-50 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-100 flex items-center gap-1">
                               <Check size={10} className="text-emerald-500" /> {s}
                             </span>

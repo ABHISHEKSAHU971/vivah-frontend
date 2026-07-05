@@ -65,6 +65,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedCateringPkgId, setSelectedCateringPkgId] = useState<string>("");
   const [selectedDecorPkgId, setSelectedDecorPkgId] = useState<string>("");
   const [selectedDecorTier, setSelectedDecorTier] = useState<string>("average");
+  const [selectedFoodIds, setSelectedFoodIds] = useState<number[]>([]);
 
   // Fetch pricing configs with parameters
   const { data: pricingConfig, isLoading: isPricingLoading } = useQuery({
@@ -77,7 +78,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       selectedCateringPkgId, 
       selectedDecorPkgId, 
       selectedDecorTier,
-      selectedTheme
+      selectedTheme,
+      selectedFoodIds
     ],
     queryFn: async () => {
       const params: any = {
@@ -100,7 +102,26 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       const response = await api.get(`/venues/${venueId}/pricing-breakdown/`, { params }).catch((err) => {
         console.warn("Using mock pricing-breakdown fallback", err);
         const rentVal = Number(venue.price_per_day);
-        const cateringVal = decorType !== "none" ? guests * 600 : 0;
+        
+        // Calculate dynamic catering cost: base price + selected food item add-on prices
+        let basePlatePrice = 600;
+        let addonPricePerPlate = 0;
+        
+        if (selectedCateringPkgId && cateringPackages) {
+          const matchedPkg = cateringPackages.find((p: any) => String(p.id) === String(selectedCateringPkgId));
+          if (matchedPkg) {
+            basePlatePrice = Number(matchedPkg.price_per_plate) || 0;
+            if (matchedPkg.menu_items) {
+              matchedPkg.menu_items.forEach((item: any) => {
+                if (selectedFoodIds.includes(item.id)) {
+                  addonPricePerPlate += Number(item.addon_price) || 0;
+                }
+              });
+            }
+          }
+        }
+        
+        const cateringVal = decorType !== "none" ? guests * (basePlatePrice + addonPricePerPlate) : 0;
         const decorVal = decorType === "inhouse" 
           ? (selectedTheme === "royal" ? 50000 : selectedTheme === "floral" ? 65000 : 25000)
           : decorType === "external" ? 30000 : 0;
@@ -131,10 +152,70 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     queryFn: async () => {
       const response = await api.get(`/catering/catering-packages/available/`, {
         params: { venue_id: venueId, date: eventDate || undefined }
+      }).catch((err) => {
+        console.warn("Using mock cateringPackages fallback", err);
+        return {
+          data: [
+            {
+              id: 301,
+              name: "Silver Platter Deal",
+              cuisine_type: "multi",
+              tier: "medium",
+              price_per_plate: 350,
+              min_plates: 80,
+              description: "Include standard 3 starters, 4 mains, 1 dessert",
+              weekend_surcharge_pct: 10,
+              festival_surcharge_pct: 15,
+              course_sections: {
+                starter: { min: 1, max: 3 },
+                main: { min: 2, max: 4 },
+                dessert: { min: 1, max: 1 },
+                welcome: { min: 1, max: 2 },
+              },
+              menu_items: [
+                { id: 11, name: "Spring Rolls", course: "starter", addon_price: 20 },
+                { id: 12, name: "Paneer Tikka", course: "starter", addon_price: 30 },
+                { id: 13, name: "Veg Manchurian", course: "starter", addon_price: 0 },
+                { id: 14, name: "Paneer Butter Masala", course: "main", addon_price: 0 },
+                { id: 15, name: "Mix Veg", course: "main", addon_price: 0 },
+                { id: 16, name: "Dal Fry", course: "main", addon_price: 0 },
+                { id: 17, name: "Jeera Rice", course: "main", addon_price: 0 },
+                { id: 18, name: "Gulab Jamun", course: "dessert", addon_price: 0 },
+                { id: 19, name: "Mint Mojito", course: "welcome", addon_price: 15 },
+              ]
+            },
+            {
+              id: 302,
+              name: "Gold Royal Banquet",
+              cuisine_type: "multi",
+              tier: "high",
+              price_per_plate: 550,
+              min_plates: 100,
+              description: "Include premium 4 starters, 5 mains, 2 desserts",
+              weekend_surcharge_pct: 12,
+              festival_surcharge_pct: 18,
+              course_sections: {
+                starter: { min: 2, max: 4 },
+                main: { min: 3, max: 5 },
+                dessert: { min: 1, max: 2 },
+                welcome: { min: 1, max: 2 },
+              },
+              menu_items: [
+                { id: 21, name: "Cheese Balls", course: "starter", addon_price: 30 },
+                { id: 22, name: "Hara Bhara Kabab", course: "starter", addon_price: 0 },
+                { id: 23, name: "Paneer Pasanda", course: "main", addon_price: 40 },
+                { id: 24, name: "Kadhai Paneer", course: "main", addon_price: 0 },
+                { id: 25, name: "Kashmiri Dum Aloo", course: "main", addon_price: 0 },
+                { id: 26, name: "Moong Dal Halwa", course: "dessert", addon_price: 0 },
+                { id: 27, name: "Rasmalai", course: "dessert", addon_price: 40 },
+              ]
+            }
+          ]
+        };
       });
-      return response.data;
+      return response.data?.data || response.data;
     },
-    enabled: isVerified && decorType === "external",
+    enabled: isVerified,
   });
 
   // Fetch available external decoration packages
@@ -326,16 +407,38 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         alert("Please select an event date before booking.");
         return;
       }
+
+      const clientName = storeUser?.full_name || formData.name || "Customer";
+      const clientPhone = storeUser?.phone || storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`;
+
+      // If caterer package selected, submit catering booking request
+      if (decorType === "external" && selectedCateringPkgId) {
+        api.post("/catering/catering-bookings/", {
+          venue: venueId,
+          catering_package: Number(selectedCateringPkgId),
+          customer_name: clientName,
+          customer_phone: clientPhone,
+          event_date: eventDate,
+          guest_count: Number(guests),
+          selected_items: selectedFoodIds
+        }).then((res) => {
+          console.log("Catering custom booking inquiry created successfully:", res.data);
+        }).catch((err) => {
+          const errMsg = err.response?.data?.error || "Caterer booking request failed.";
+          alert(errMsg);
+        });
+      }
+
       submitInquiryMutation.mutate(
         {
-          name: storeUser?.full_name || formData.name || "Customer",
-          phone: storeUser?.phone || storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`,
+          name: clientName,
+          phone: clientPhone,
           guest_count: Number(guests),
           event_date: eventDate,
           venue: venueId,
           catering_package: decorType === "external" && selectedCateringPkgId ? Number(selectedCateringPkgId) : null,
           decoration_package: decorType === "external" && selectedDecorPkgId ? Number(selectedDecorPkgId) : null,
-          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Catering Package = ${selectedCateringPkgId || "inhouse"}, Decoration Package = ${selectedDecorPkgId || "inhouse"}.`,
+          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Catering Package = ${selectedCateringPkgId || "inhouse"} (Dishes selected: ${selectedFoodIds.join(",")}), Decoration Package = ${selectedDecorPkgId || "inhouse"}.`,
         },
         {
           onSuccess: () => {
@@ -818,134 +921,240 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
           </div>
 
-          {/* 3 Pricing Cards Comparison Section */}
-          {isVerified && (
-            <div className="mt-12 bg-white p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-              <div className="text-center md:text-left space-y-2">
-                <h3 className="font-heading font-semibold text-2xl text-gray-900">Compare Package Quotes</h3>
-                <p className="text-sm text-gray-500">Recalculating dynamically based on <span className="font-semibold text-amber-600">{guests} guests</span> on <span className="font-semibold text-gray-800">{eventDate || "selected date"}</span>.</p>
+          {/* Phase 6: Matrix comparison and interactive item selection */}
+          {isVerified && cateringPackages && cateringPackages.length > 0 && (
+            <div className="mt-12 bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+              <div>
+                <h3 className="font-heading font-semibold text-2xl text-gray-900">Interactive Menu & Package Customizer</h3>
+                <p className="text-sm text-gray-500">Compare catering plans side-by-side, check dishes to customize your platter, and watch the quote update live.</p>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Card 1: Venue Only */}
-                <div className="bg-zinc-50 border border-gray-100 rounded-2xl p-6 flex flex-col justify-between space-y-6 transition-all hover:shadow-md hover:border-gray-200">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-heading font-semibold text-lg text-gray-900">Venue Rent Only</h4>
-                        <p className="text-[11px] text-gray-400">Bring your own vendors</p>
+
+              {/* Package Comparison Grid Table */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {cateringPackages.map((pkg: any) => {
+                  const isSelected = String(pkg.id) === String(selectedCateringPkgId);
+                  
+                  // Compute dynamic package quote (live update)
+                  let basePrice = Number(pkg.price_per_plate) || 0;
+                  let selectedAddonTotal = 0;
+                  const matchedItems = pkg.menu_items?.filter((it: any) => selectedFoodIds.includes(it.id)) || [];
+                  matchedItems.forEach((it: any) => {
+                    selectedAddonTotal += Number(it.addon_price) || 0;
+                  });
+
+                  const plateRate = basePrice + selectedAddonTotal;
+                  const rawSubtotal = plateRate * guests;
+                  
+                  // Weekend/festival surcharges
+                  // simple check: if date string contains Friday/Sat/Sun or manually set
+                  const isWeekend = eventDate ? [0, 5, 6].includes(new Date(eventDate).getDay()) : false; // Sun=0, Fri=5, Sat=6
+                  const weekendSurcharge = isWeekend ? (rawSubtotal * (Number(pkg.weekend_surcharge_pct) || 0) / 100) : 0;
+                  
+                  const subtotal = rawSubtotal + weekendSurcharge;
+                  const royalty = subtotal * 0.05;
+                  const gst = (subtotal + royalty) * 0.18;
+                  const grandTotal = subtotal + royalty + gst;
+
+                  return (
+                    <div 
+                      key={pkg.id} 
+                      className={`rounded-2xl p-5 border transition-all flex flex-col justify-between space-y-5 ${
+                        isSelected 
+                          ? "border-amber-500 bg-amber-500/[0.01] ring-1 ring-amber-500/20 shadow-md" 
+                          : "border-gray-150 bg-zinc-50/30 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                              {pkg.tier?.toUpperCase() || "STANDARD"}
+                            </span>
+                            <h4 className="font-semibold text-lg text-gray-900 mt-1">{pkg.name}</h4>
+                          </div>
+                          {isSelected && (
+                            <span className="text-xs font-bold text-amber-600 flex items-center gap-0.5">
+                              <Check size={14} /> Active
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-gray-500 line-clamp-2">{pkg.description}</p>
+                        
+                        <div className="border-t border-dashed border-gray-200 pt-3 space-y-2 text-xs text-gray-600">
+                          <div className="flex justify-between">
+                            <span>Base Plate Price</span>
+                            <span className="font-semibold text-gray-900">₹{basePrice}/plate</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Selected Add-ons</span>
+                            <span className="font-semibold text-gray-900">₹{selectedAddonTotal}/plate</span>
+                          </div>
+                          <div className="flex justify-between border-t border-gray-150 pt-2 font-bold text-gray-900">
+                            <span>Final Plate Rate</span>
+                            <span className="text-amber-600">₹{plateRate}/plate</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 pt-3 border-t border-gray-100">
+                        <div className="text-xs text-gray-500 space-y-1 bg-zinc-50 p-2.5 rounded-lg">
+                          <div className="flex justify-between">
+                            <span>Food subtotal</span>
+                            <span>₹{rawSubtotal.toLocaleString("en-IN")}</span>
+                          </div>
+                          {weekendSurcharge > 0 && (
+                            <div className="flex justify-between text-amber-700 font-medium">
+                              <span>Weekend Surcharge ({pkg.weekend_surcharge_pct}%)</span>
+                              <span>₹{weekendSurcharge.toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-[10px]">
+                            <span>Royalty (5%) & GST (18%)</span>
+                            <span>₹{Math.round(royalty + gst).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-gray-200 pt-1.5 font-bold text-gray-900 text-sm">
+                            <span>Total Quote</span>
+                            <span>₹{Math.round(grandTotal).toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCateringPkgId(String(pkg.id));
+                            // reset custom item selections for new package
+                            setSelectedFoodIds([]);
+                          }}
+                          className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${
+                            isSelected 
+                              ? "bg-amber-500 text-white cursor-default" 
+                              : "border border-amber-500/30 text-amber-600 hover:bg-amber-50"
+                          }`}
+                        >
+                          {isSelected ? "Selected Caterer Plan" : "Choose this Plan"}
+                        </button>
                       </div>
                     </div>
-                    <hr className="border-gray-200" />
-                    <ul className="text-xs text-gray-600 space-y-2">
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Base Venue Rental
-                      </li>
-                      <li className="flex items-center gap-1.5 text-gray-400 line-through">
-                        <Check size={12} className="text-gray-300" /> Catering Services
-                      </li>
-                      <li className="flex items-center gap-1.5 text-gray-400 line-through">
-                        <Check size={12} className="text-gray-300" /> Custom Theme Setup
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="space-y-3 pt-4 border-t border-gray-200/60">
-                    <div>
-                      <span className="text-[10px] text-gray-400 uppercase font-bold">Estimated Quote</span>
-                      <p className="text-2xl font-bold text-gray-900">₹{pkg1.total.toLocaleString("en-IN")}</p>
-                      <span className="text-[9px] text-gray-400">(Includes 18% GST)</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setDecorType("external"); }}
-                      className="w-full py-2 text-xs font-bold rounded-lg border border-amber-500/20 text-amber-600 hover:bg-amber-500/5 transition-all cursor-pointer"
-                    >
-                      Select Package Option
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card 2: Venue + In-house Decor & Catering (Recommended) */}
-                <div className="relative bg-amber-500/[0.02] border-2 border-amber-500/30 rounded-2xl p-6 flex flex-col justify-between space-y-6 shadow-xs hover:shadow-md transition-all">
-                  <span className="absolute top-0 right-6 -translate-y-1/2 bg-amber-500 text-white text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full shadow-xs">
-                    Popular Choice
-                  </span>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-heading font-semibold text-lg text-gray-900">All-Inclusive Standard</h4>
-                        <p className="text-[11px] text-gray-400">Venue + Catering + In-house Decor</p>
-                      </div>
-                    </div>
-                    <hr className="border-gray-200" />
-                    <ul className="text-xs text-gray-600 space-y-2">
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Base Venue Rental
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Catering Veg ({guests} plates)
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Decor Theme: <span className="font-semibold text-amber-600">{INHOUSE_THEMES.find((t: any) => t.id === selectedTheme)?.name || "Standard"}</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="space-y-3 pt-4 border-t border-gray-200/60">
-                    <div>
-                      <span className="text-[10px] text-gray-400 uppercase font-bold">Estimated Quote</span>
-                      <p className="text-2xl font-bold text-amber-600">₹{pkg2.total.toLocaleString("en-IN")}</p>
-                      <span className="text-[9px] text-gray-400">(Includes 18% GST)</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setDecorType("inhouse"); }}
-                      className="w-full py-2 text-xs font-bold rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all cursor-pointer"
-                    >
-                      Selected Option
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card 3: Venue + External Decor & Catering */}
-                <div className="bg-zinc-50 border border-gray-100 rounded-2xl p-6 flex flex-col justify-between space-y-6 transition-all hover:shadow-md hover:border-gray-200">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-heading font-semibold text-lg text-gray-900">Custom Designer</h4>
-                        <p className="text-[11px] text-gray-400">Venue + Catering + External Royalty</p>
-                      </div>
-                    </div>
-                    <hr className="border-gray-200" />
-                    <ul className="text-xs text-gray-600 space-y-2">
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Base Venue Rental
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> Catering Veg ({guests} plates)
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500" /> External Decorator Royalty Fee
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="space-y-3 pt-4 border-t border-gray-200/60">
-                    <div>
-                      <span className="text-[10px] text-gray-400 uppercase font-bold">Estimated Quote</span>
-                      <p className="text-2xl font-bold text-gray-900">₹{pkg3.total.toLocaleString("en-IN")}</p>
-                      <span className="text-[9px] text-gray-400">(Includes 18% GST)</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setDecorType("external"); }}
-                      className="w-full py-2 text-xs font-bold rounded-lg border border-amber-500/20 text-amber-600 hover:bg-amber-500/5 transition-all cursor-pointer"
-                    >
-                      Select Package Option
-                    </button>
-                  </div>
-                </div>
-
+                  );
+                })}
               </div>
+
+              {/* Interactive Food Checkboxes Selector */}
+              {(() => {
+                const activePkg = cateringPackages.find((p: any) => String(p.id) === String(selectedCateringPkgId));
+                if (!activePkg || !activePkg.menu_items || activePkg.menu_items.length === 0) return null;
+
+                // Group items by course
+                const grouped: Record<string, any[]> = {};
+                activePkg.menu_items.forEach((item: any) => {
+                  if (!grouped[item.course]) grouped[item.course] = [];
+                  grouped[item.course].push(item);
+                });
+
+                return (
+                  <div className="border-t border-gray-150 pt-6 space-y-4">
+                    <div>
+                      <h4 className="font-heading font-semibold text-lg text-gray-900">Customise Your Platter Menu</h4>
+                      <p className="text-xs text-gray-400">Select dishes from the catalog. Premium options list surcharge add-on rates that update your plate total live.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.entries(grouped).map(([courseName, items]) => {
+                        const limit = activePkg.course_sections?.[courseName] || { min: 1, max: 4 };
+                        const courseCheckedCount = items.filter((it) => selectedFoodIds.includes(it.id)).length;
+                        const isOverLimit = courseCheckedCount > limit.max;
+
+                        return (
+                          <div key={courseName} className="bg-zinc-50/50 p-5 rounded-2xl border border-gray-150 space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="font-heading font-semibold text-sm capitalize text-gray-900">
+                                {(() => {
+                                  const nameMap: Record<string, string> = {
+                                    starter: "Starters",
+                                    main: "Main Course",
+                                    seasonal_veg: "Seasonal Veg",
+                                    paneer_dish: "Paneer Dishes",
+                                    breads: "Bread Varieties",
+                                    dessert: "Desserts",
+                                    welcome: "Welcome Drinks",
+                                    live: "Live Counters",
+                                    other: "Others"
+                                  };
+                                  return nameMap[courseName] || courseName;
+                                })()}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                isOverLimit 
+                                  ? "bg-red-50 text-red-600 border border-red-200" 
+                                  : "bg-gold/10 text-gold"
+                              }`}>
+                                Selected: {courseCheckedCount} / Max {limit.max}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {items.map((item: any) => {
+                                const checked = selectedFoodIds.includes(item.id);
+                                return (
+                                  <label 
+                                    key={item.id}
+                                    className={`p-3 rounded-xl border text-xs flex justify-between items-start gap-2.5 cursor-pointer transition-all ${
+                                      checked 
+                                        ? "bg-white border-amber-500 font-medium" 
+                                        : "bg-white/80 border-gray-200 hover:border-gray-300"
+                                    }`}
+                                  >
+                                    <div className="flex gap-2">
+                                      <input 
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          if (checked) {
+                                            setSelectedFoodIds(selectedFoodIds.filter(id => id !== item.id));
+                                          } else {
+                                            // FIFO auto-replacement logic
+                                            const currentlySelectedInCourse = items.filter(it => selectedFoodIds.includes(it.id));
+                                            if (currentlySelectedInCourse.length >= limit.max) {
+                                              // Remove the oldest selected item in this course
+                                              const oldestItem = currentlySelectedInCourse[0];
+                                              if (oldestItem) {
+                                                setSelectedFoodIds([
+                                                  ...selectedFoodIds.filter(id => id !== oldestItem.id),
+                                                  item.id
+                                                ]);
+                                                return;
+                                              }
+                                            }
+                                            setSelectedFoodIds([...selectedFoodIds, item.id]);
+                                          }
+                                        }}
+                                        className="mt-0.5 accent-gold"
+                                      />
+                                      <div>
+                                        <span className="text-gray-800 block leading-tight">{item.name}</span>
+                                        {item.description && (
+                                          <span className="text-[9px] text-gray-400 block mt-0.5 italic">{item.description}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {Number(item.addon_price) > 0 && (
+                                      <span className="text-[10px] font-bold text-amber-600 shrink-0">
+                                        +₹{item.addon_price}
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
             </div>
           )}
 

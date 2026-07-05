@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, MapPin, SlidersHorizontal, Star, Users, Loader2, AlertCircle, IndianRupee, Calendar, X } from "lucide-react";
 import Image from "next/image";
@@ -42,7 +42,7 @@ interface Venue {
   images?: { image: string }[];
 }
 
-export default function VenuesPage() {
+function VenuesPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -355,5 +355,17 @@ export default function VenuesPage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+export default function VenuesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-zinc-50">
+        <Loader2 className="w-8 h-8 animate-spin text-gold" />
+      </div>
+    }>
+      <VenuesPageContent />
+    </Suspense>
   );
 }

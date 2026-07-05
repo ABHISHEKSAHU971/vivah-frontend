@@ -77,6 +77,7 @@ export interface VendorProfileData {
   logo: string | null;
   is_approved: boolean;
   rejection_reason: string;
+  catering_business?: any;
   created_at: string;
 }
 

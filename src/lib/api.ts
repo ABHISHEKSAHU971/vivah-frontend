@@ -6,11 +6,20 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Auto-attach JWT on every request
+// Auto-attach JWT on every request unless it's a public endpoint
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    const isPublic = config.url?.includes("/send-otp/") || 
+                     config.url?.includes("/otp/send/") ||
+                     config.url?.includes("/verify-otp/") || 
+                     config.url?.includes("/otp/verify/") ||
+                     config.url?.includes("/vendor/list/") ||
+                     config.url?.includes("/venues/venues/") ||
+                     config.url?.includes("/auth/admin/login/");
+    if (token && !isPublic) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });
@@ -20,7 +29,13 @@ api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
-    if (err.response?.status === 401 && !original._retry && !original.url?.includes("/auth/")) {
+    const shouldSkipRefresh = original.url?.includes("/token/refresh/") ||
+                             original.url?.includes("/send-otp/") ||
+                             original.url?.includes("/otp/send/") ||
+                             original.url?.includes("/verify-otp/") ||
+                             original.url?.includes("/otp/verify/") ||
+                             original.url?.includes("/auth/admin/login/");
+    if (err.response?.status === 401 && !original._retry && !shouldSkipRefresh) {
       original._retry = true;
       try {
         const refresh = localStorage.getItem("refresh_token");

@@ -1,274 +1,94 @@
 # Catering Management Module - Detailed Implementation Plan
 
 ## Project Goal
-
-Build a scalable Catering Management System for PlanMyVivah where
-vendors can manage their catering business, create reusable menu
-libraries, build dynamic catering plans, and allow customers to browse,
-compare, customize, and book catering services.
-
-------------------------------------------------------------------------
-
-# Phase 1 -- Requirement Analysis & System Design
-
-## Objective
-
-Understand business requirements and design a future-proof architecture
-before writing code.
-
-## Implementation Tasks
-
--   Analyze current catering workflow from the provided menu sheets.
--   Identify all entities (Business, Plans, Categories, Menu Items,
-    Add-ons, Availability, Bookings).
--   Prepare ER Diagram.
--   Finalize database relationships.
--   Prepare API endpoint list.
--   Prepare frontend wireframes for Vendor, Customer, and Admin.
-
-## Deliverables
-
--   Requirement document
--   ER Diagram
--   Database schema
--   API contract
--   UI wireframes
-
-------------------------------------------------------------------------
-
-# Phase 2 -- Backend Foundation
-
-## Objective
-
-Create the base project structure and core models.
-
-## Implementation Tasks
-
--   Create CateringBusiness model.
--   Create Branch model.
--   Configure vendor ownership.
--   Register Django Admin.
--   Add common fields (status, timestamps, soft delete).
--   Create serializers and migrations.
-
-## Deliverables
-
--   Database tables
--   Django models
--   Admin panel setup
-
-------------------------------------------------------------------------
-
-# Phase 3 -- Menu Master Library
-
-## Objective
-
-Build a reusable menu library instead of hardcoding food items.
-
-## Implementation Tasks
-
--   Menu Category CRUD.
--   Menu Item CRUD.
--   Image upload.
--   Tags (Jain, Spicy, Premium, Kids).
--   Seasonal collections.
--   Search and filtering.
-
-## Deliverables
-
--   Category APIs
--   Menu Item APIs
--   Master food library
-
-------------------------------------------------------------------------
-
-# Phase 4 -- Catering Plan Builder
-
-## Objective
-
-Allow vendors to create Silver, Golden, Diamond, Platinum and custom
-plans dynamically.
-
-## Implementation Tasks
-
--   Plan CRUD.
--   Plan Sections (Soup, Rice, Dessert, etc.).
--   Define minimum/maximum selectable items.
--   Attach Menu Items to sections.
--   Duplicate existing plans.
--   Plan versioning.
-
-## Deliverables
-
--   Dynamic Plan Builder
--   Version-controlled plans
--   Section-based package configuration
-
-------------------------------------------------------------------------
-
-# Phase 5 -- Pricing Engine
-
-## Objective
-
-Implement flexible pricing rules.
-
-## Implementation Tasks
-
--   Per plate pricing.
--   Weekend pricing.
--   Festival pricing.
--   Minimum guest validation.
--   Dynamic price calculator.
--   Add-on pricing.
-
-## Deliverables
-
--   Pricing APIs
--   Calculation engine
-
-------------------------------------------------------------------------
-
-# Phase 6 -- Vendor Dashboard (Frontend)
-
-## Objective
-
-Provide vendors with an intuitive dashboard.
-
-## Implementation Tasks
-
--   Dashboard overview.
--   Catering profile management.
--   Gallery upload.
--   Menu category management.
--   Food library management.
--   Plan builder UI.
--   Availability calendar.
-
-## Deliverables
-
--   Responsive React pages
--   API integration
--   Validation
-
-------------------------------------------------------------------------
-
-# Phase 7 -- Customer Experience
-
-## Objective
-
-Allow customers to discover and compare catering packages.
-
-## Implementation Tasks
-
--   Search caterers.
--   Filter by city, budget, cuisine.
--   View plans.
--   Compare packages.
--   Live price calculation.
--   Add-ons.
--   Booking summary.
-
-## Deliverables
-
--   Customer UI
--   Compare page
--   Booking workflow
-
-------------------------------------------------------------------------
-
-# Phase 8 -- Booking Module
-
-## Objective
-
-Complete the booking process.
-
-## Implementation Tasks
-
--   Select event date.
--   Guest count.
--   Select package.
--   Select add-ons.
--   Check availability.
--   Save booking.
--   Integrate payment gateway.
-
-## Deliverables
-
--   Booking APIs
--   Payment-ready flow
-
-------------------------------------------------------------------------
-
-# Phase 9 -- Admin Portal
-
-## Objective
-
-Provide complete platform management.
-
-## Implementation Tasks
-
--   Vendor approval.
--   Global categories.
--   Global menu management.
--   Booking management.
--   Reports.
--   Dashboard analytics.
-
-## Deliverables
-
--   Admin dashboard
--   Reports
--   Analytics
-
-------------------------------------------------------------------------
-
-# Phase 10 -- Testing & Deployment
-
-## Objective
-
-Ensure production readiness.
-
-## Implementation Tasks
-
--   Unit testing.
--   API testing.
--   Frontend testing.
--   Performance optimization.
--   Security review.
--   Documentation.
--   Deployment checklist.
-
-## Deliverables
-
--   Tested module
--   Production deployment guide
-
-------------------------------------------------------------------------
-
-# Suggested Development Order
-
-1.  Database Design
-2.  Django Models
-3.  Django Admin
-4.  DRF APIs
-5.  Vendor Dashboard
-6.  Plan Builder
-7.  Customer Module
-8.  Booking Module
-9.  Admin Module
-10. Testing & Deployment
-
-------------------------------------------------------------------------
-
-# Future Enhancements
-
--   AI Menu Recommendation
--   Package Templates
--   Smart Pricing
--   Multiple Branch Management
--   Reviews & Ratings
--   Availability Calendar
--   PDF Menu Generator
--   WhatsApp Quotation Sharing
--   Analytics Dashboard
--   Multi-language Support
+Build a scalable Catering Management System for PlanMyVivah where catering capabilities are fully integrated into the **Vendor Listing** flow. Vendors can manage their brand profile, configure multiple branches, define a master menu library, and build package tiers (Silver, Gold, Platinum) directly within their Listing. Customers can browse, compare, customize menus, and submit booking requests with live quote calculations.
+
+---
+
+## Phase 1 — Requirement Analysis & System Design (DONE)
+*   **Tasks:**
+    *   Map core catering workflows (Jain, Veg, Spicy dietary settings, plate-wise counts).
+    *   Formulate Entity-Relationship (ER) models and PostgreSQL database schema.
+    *   Draft REST API contracts and frontend page wireframe briefs.
+*   **Deliverables:** [catering_system_design.md](file:///c:/Users/91722/.gemini/antigravity-ide/brain/50503b12-75fa-4a4e-9415-c1c1fee2fa7a/catering_system_design.md)
+
+---
+
+## Phase 2 — Backend Foundation & Models (DONE)
+*   **Tasks:**
+    *   Create `CateringBusiness` model (OneToOne to `VendorProfile`) and `Branch` model.
+    *   Extend `CateringMenuItem` with extra tags (`is_spicy`, `addon_price`).
+    *   Register all models with custom layouts in Django Admin.
+    *   Generate and apply database migrations.
+    *   Expose models through serialization fields.
+*   **Deliverables:** Core Django models, migrations, serializers, and admin layouts.
+
+---
+
+## Phase 3 — Listing Form Integration (Catering Configurator) (DONE)
+**Goal:** Integrate the catering profile, branch addresses, master menu library, and packages setup directly into the **Vendor Listing Wizard** (`add/form/page.tsx` & edit pages).
+
+### A. Frontend Listing Form Wizard (`add/form/page.tsx`)
+Modify the multi-step listing editor wizard. When a vendor selects the **Caterer** type, dynamically show steps to configure the catering business:
+*   **Step 1: Listing Details:** Brand Name, General Description, Base City, Address, and Logo.
+*   **Step 2: Business Profile & Branches:** Select Cuisines (Rajasthani, Gujarati, South Indian, Multi-Cuisine), set Minimum Guest limits, and list multiple branches with address and phone fields.
+*   **Step 3: Master Menu Library:** Add/manage food items with fields: Name, Course (Starter, Main, Dessert, Welcome Drink), dietary checkboxes (Veg, Jain, Spicy), and premium Add-on price.
+*   **Step 4: Package Tiers (Plans):** Build packages (e.g. Silver, Gold, Platinum) with plate pricing, minimum plates limits, and choose standard/allowed items from the menu library.
+
+### B. Backend Listing REST Endpoints
+*   Modify `GET /api/v1/listings/` and `POST /api/v1/listings/` serializers to automatically parse and save the nested catering payload (Profile, Branches, Menu items, Packages) transactionally when creating or editing a listing of type `'caterer'`.
+
+---
+
+## Phase 4 — Master Menu Library Management (DONE)
+**Goal:** Provide full CRUD interface inside the Vendor Listing dashboard to manage the master food library.
+*   **Tasks:**
+    *   Develop a menu table within the listing page listing all cataloged dishes.
+    *   Provide inline additions and edits with validation (e.g., addon price cannot be negative).
+    *   Support CSV/Sheet upload for quick bulk import of dishes.
+
+---
+
+## Phase 5 — Dynamic Package Builder & Pricing Engine
+**Goal:** Configure package constraints (e.g. Gold Platter: Choose max 4 Starters, 2 Seasonal Veg, 4 Welcome Drinks) and calculate live quotes.
+*   **Tasks:**
+    *   **New Database Table (Master Food Item):** Create a separate `MasterFoodItem` table (with ID, name, standard course category, veg/jain/spicy flags, and standard description) to allow a shared database of dishes accessible across all caterers.
+    *   **Package Constraints & Quantity Selectors:** Implement Plan Sections with select constraints (`min_selectable`, `max_selectable`) and allow defining the number of allowable choices for each category (e.g., choose exactly 4 welcome drinks, 2 seasonal veg, etc.) directly in the package plan options.
+    *   **Backend Pricing Engine Surcharges:** Incorporate calculation algorithms inside the backend pricing engine:
+        $$\text{Subtotal} = (\text{Base Price/Plate} + \text{Add-ons}) \times \text{Guest Count}$$
+    *   Add premium weekend or festival surcharges.
+
+---
+
+## Phase 6 — Customer Discovery & Comparison
+**Goal:** Expose catering packages on the customer-facing discovery details page.
+*   **Tasks:**
+    *   Render packages in a comparison table (Silver vs Gold vs Diamond).
+    *   Implement interactive food checkboxes where visitors choose their dishes.
+    *   Display live price breakdown updates including Platform Royalty fees (5%) and GST (18%).
+
+---
+
+## Phase 7 — Interactive Catering Booking & Check availability
+**Goal:** Connect customized packages to checkout and save inquiries.
+*   **Tasks:**
+    *   Gate booking checkout with OTP verification.
+    *   Save selected customized menu items to the `CateringBooking` database.
+    *   Verify vendor date availability before allowing checkouts.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+*   Backend REST tests:
+    ```bash
+    python manage.py test apps.catering
+    ```
+*   Playwright E2E tests:
+    ```bash
+    npx playwright test e2e/catering_listing.spec.ts
+    ```
+
+### Manual Verification
+*   Create a caterer vendor listing from the dashboard, configure branches and items, and verify it updates the customer catering catalogue search.

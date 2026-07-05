@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { 
   ArrowLeft, ArrowRight, Save, CheckCircle, Store, Music, 
-  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle 
+  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -81,14 +81,26 @@ function EditListingForm() {
 
   // Category specific fields
   const [detailForm, setDetailForm] = useState<any>({});
+  const [catererTab, setCatererTab] = useState("packages"); // "profile", "menu", "packages"
 
   // Image state
   const [images, setImages] = useState<{ preview: string }[]>([]);
+
+  const [masterFoodItems, setMasterFoodItems] = useState<any[]>([]);
+  const [newDishCourse, setNewDishCourse] = useState("starter");
 
   // Fetch listing details on mount
   useEffect(() => {
     if (!id) return;
     setFetching(true);
+
+    // Fetch master food items for step 3 library
+    api.get("/catering/master-food-items/")
+      .then((res) => {
+        setMasterFoodItems(res.data.results || res.data.data || res.data || []);
+      })
+      .catch((err) => console.error("Fetch master food items error:", err));
+
     api.get(`/listings/${id}/`)
       .then((res) => {
         const item = res.data.data || res.data;
@@ -170,7 +182,23 @@ function EditListingForm() {
       if (!baseForm.address.trim()) errors.address = "Complete Address is required";
       if (!baseForm.city.trim()) errors.city = "City is required";
       if (!baseForm.state.trim()) errors.state = "State is required";
+    } else if (type === "caterer") {
+      if (currentStep === 2) {
+        if (!detailForm.cuisines || detailForm.cuisines.length === 0) {
+          errors["details.cuisines"] = "Select at least one cuisine type";
+        }
+      } else if (currentStep === 4) {
+        if (!detailForm.packages || detailForm.packages.length === 0) {
+          errors["details.packages"] = "Create at least one pricing plan tier";
+        } else {
+          detailForm.packages.forEach((pkg: any, idx: number) => {
+            if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
+            if (!pkg.price_per_plate) errors[`details.packages.${idx}.price_per_plate`] = "Price per plate is required";
+          });
+        }
+      }
     } else if (currentStep === 2) {
+      // Validate service fields based on type
       if (type === "photographer") {
         if (!detailForm.base_package_price) errors["details.base_package_price"] = "Price is required";
         if (detailForm.photography_types?.length === 0) errors["details.photography_types"] = "Select at least one photography type";
@@ -186,9 +214,6 @@ function EditListingForm() {
       } else if (type === "dj") {
         if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
         if (!detailForm.price) errors["details.price"] = "Price is required";
-      } else if (type === "caterer") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
-        if (!detailForm.price_per_plate) errors["details.price_per_plate"] = "Price per plate is required";
       } else if (type === "decorator") {
         if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
       }
@@ -211,9 +236,13 @@ function EditListingForm() {
   };
 
   const handleSubmit = async (status: "draft" | "pending_approval" | "active") => {
-    if (!validateStep(1) || !validateStep(2)) {
-      setStep(1);
-      return;
+    const isCaterer = type === "caterer";
+    const maxValStep = isCaterer ? 4 : 2;
+    for (let s = 1; s <= maxValStep; s++) {
+      if (!validateStep(s)) {
+        setStep(s);
+        return;
+      }
     }
     setLoading(true);
     setErrorMsg("");
@@ -224,11 +253,6 @@ function EditListingForm() {
       details: { ...detailForm }
     };
 
-    // Prepopulate package names for DJ, Caterer, Decorator details if blank
-    if (["dj", "caterer", "decorator"].includes(type) && !payload.details.name) {
-      payload.details.name = baseForm.name;
-    }
-
     // Convert decimal strings to numbers for serialization safety
     if (payload.details.base_package_price) payload.details.base_package_price = parseFloat(payload.details.base_package_price);
     if (payload.details.bridal_package_price) payload.details.bridal_package_price = parseFloat(payload.details.bridal_package_price);
@@ -237,14 +261,21 @@ function EditListingForm() {
     if (payload.details.budget_max) payload.details.budget_max = parseFloat(payload.details.budget_max);
     if (payload.details.price_per_day) payload.details.price_per_day = parseFloat(payload.details.price_per_day);
     if (payload.details.price) payload.details.price = parseFloat(payload.details.price);
-    if (payload.details.price_per_plate) payload.details.price_per_plate = parseFloat(payload.details.price_per_plate);
 
     if (payload.details.team_size) payload.details.team_size = parseInt(payload.details.team_size);
     if (payload.details.delivery_days_limit) payload.details.delivery_days_limit = parseInt(payload.details.delivery_days_limit);
     if (payload.details.min_capacity) payload.details.min_capacity = parseInt(payload.details.min_capacity);
     if (payload.details.max_capacity) payload.details.max_capacity = parseInt(payload.details.max_capacity);
     if (payload.details.hours) payload.details.hours = parseInt(payload.details.hours);
-    if (payload.details.min_plates) payload.details.min_plates = parseInt(payload.details.min_plates);
+
+    // Convert package fields to decimals/numbers for caterer
+    if (isCaterer && payload.details.packages) {
+      payload.details.packages = payload.details.packages.map((pkg: any) => ({
+        ...pkg,
+        price_per_plate: parseFloat(pkg.price_per_plate) || 0,
+        min_plates: parseInt(pkg.min_plates) || 50
+      }));
+    }
 
     try {
       const response = await api.patch(`/listings/${id}/`, payload);
@@ -327,7 +358,7 @@ function EditListingForm() {
             </div>
             <div>
               <h1 className="text-xl font-heading font-semibold text-gray-900">Edit {getServiceLabel()}</h1>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Step {step} of 3</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Step {step} of {type === "caterer" ? 4 : 3}</p>
             </div>
           </div>
         </div>
@@ -339,6 +370,12 @@ function EditListingForm() {
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 2 ? "bg-gold" : "bg-gray-250"}`} />
           <div className="w-6 h-0.5 bg-gray-200" />
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 3 ? "bg-gold" : "bg-gray-250"}`} />
+          {type === "caterer" && (
+            <>
+              <div className="w-6 h-0.5 bg-gray-200" />
+              <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 4 ? "bg-gold" : "bg-gray-250"}`} />
+            </>
+          )}
         </div>
       </div>
 
@@ -434,6 +471,51 @@ function EditListingForm() {
               />
               {formErrors.address && <p className="text-[10px] text-red-500 font-semibold">{formErrors.address}</p>}
             </div>
+            {type === "caterer" && (
+              <div className="space-y-4 pt-3 border-t border-gray-100">
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-widest text-slate-400">Upload Brand Logo & Photos</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Attach photos showcasing your catering business logo, setup, and buffet presentation.</p>
+                </div>
+                <div className="border-2 border-dashed border-gray-200 hover:border-gold/50 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors relative bg-zinc-50/30">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
+                    <Upload size={18} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs font-semibold text-gray-900">Upload brand image / logo</p>
+                    <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                  </div>
+                </div>
+
+                {images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                    {images.map((img, idx) => (
+                      <div key={idx} className="relative h-24 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
+                        <img
+                          src={img.preview}
+                          alt={`Preview ${idx + 1}`}
+                          className="object-cover w-full h-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(idx)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-3">
@@ -447,8 +529,161 @@ function EditListingForm() {
         </div>
       )}
 
-      {/* STEP 2: CATEGORY SPECIFIC DETAILS */}
-      {step === 2 && (
+      {/* STEP 2: BUSINESS PROFILE & BRANCHES FOR CATERER */}
+      {step === 2 && type === "caterer" && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Business Profile & Branches</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Define your cuisines specialization, minimum order limits, and branch locations.</p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Cuisines Checkboxes */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {["Rajasthani", "Gujarati", "South Indian", "Multi-Cuisine", "Punjabi", "Continental", "Jain", "Chinese"].map((cuisine) => {
+                const cuisines = detailForm.cuisines || [];
+                const selected = cuisines.includes(cuisine.toLowerCase());
+                return (
+                  <button
+                    key={cuisine}
+                    type="button"
+                    onClick={() => {
+                      const next = selected 
+                        ? cuisines.filter((c: string) => c !== cuisine.toLowerCase())
+                        : [...cuisines, cuisine.toLowerCase()];
+                      handleDetailChange("cuisines", next);
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs capitalize text-left transition-all flex items-center justify-between ${
+                      selected 
+                        ? "bg-gold/10 text-gold border-gold font-semibold" 
+                        : "bg-white text-gray-600 border-gray-250 hover:border-gray-400"
+                    }`}
+                  >
+                    <span>{cuisine}</span>
+                    {selected && <Check size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+            {formErrors["details.cuisines"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.cuisines"]}</p>}
+          </div>
+
+          {/* Min Guest capacity */}
+          <div className="space-y-1.5 max-w-xs">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity Limit</label>
+            <input
+              type="number"
+              min={20}
+              placeholder="e.g. 50"
+              value={detailForm.min_guests || 50}
+              onChange={(e) => handleDetailChange("min_guests", parseInt(e.target.value) || 50)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-950"
+            />
+          </div>
+
+          {/* Branches Manager */}
+          <div className="space-y-4 pt-3 border-t border-gray-100">
+            <div>
+              <h3 className="text-xs font-semibold text-gray-900">Branch Locations</h3>
+              <p className="text-[10px] text-gray-400">List operational branches to service leads across multiple areas.</p>
+            </div>
+            
+            <div className="space-y-3">
+              {detailForm.branches?.map((branch: any, idx: number) => (
+                <div key={idx} className="flex gap-3 items-end p-4 border border-gray-150 rounded-xl bg-zinc-50/50">
+                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Branch Name</label>
+                      <input
+                        type="text"
+                        value={branch.name}
+                        placeholder="e.g. Main Branch"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].name = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Address</label>
+                      <input
+                        type="text"
+                        value={branch.address}
+                        placeholder="e.g. Maharana Pratap Nagar"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].address = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phone Number</label>
+                      <input
+                        type="text"
+                        value={branch.phone}
+                        placeholder="e.g. 9876543210"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].phone = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = detailForm.branches.filter((_: any, i: number) => i !== idx);
+                      handleDetailChange("branches", list);
+                    }}
+                    className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition-colors"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              
+              <button
+                type="button"
+                onClick={() => {
+                  const list = [...(detailForm.branches || []), { name: "", address: "", phone: "" }];
+                  handleDetailChange("branches", list);
+                }}
+                className="w-full border border-dashed border-gray-300 py-3 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
+              >
+                + Add Operational Branch
+              </button>
+            </div>
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+            <button
+              onClick={handleBack}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+            >
+              Master Menu Library <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: CATEGORY SPECIFIC DETAILS FOR NON-CATERERS */}
+      {step === 2 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
             <h2 className="text-base font-semibold text-gray-900 font-heading">{getServiceLabel()} Specification Details</h2>
@@ -910,90 +1145,7 @@ function EditListingForm() {
             </div>
           )}
 
-          {/* CATERER */}
-          {type === "caterer" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Catering Package Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Royal Silver Buffet Menu"
-                  value={detailForm.name || ""}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisine Category</label>
-                  <select
-                    value={detailForm.cuisine_type}
-                    onChange={(e) => handleDetailChange("cuisine_type", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  >
-                    {CUISINE_CHOICES.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
-                  <select
-                    value={detailForm.tier || "medium"}
-                    onChange={(e) => handleDetailChange("tier", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  >
-                    {TIER_CHOICES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (₹)</label>
-                  <input
-                    type="number"
-                    value={detailForm.price_per_plate || ""}
-                    placeholder="e.g. 500"
-                    onChange={(e) => handleDetailChange("price_per_plate", e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                      formErrors["details.price_per_plate"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                    }`}
-                  />
-                  {formErrors["details.price_per_plate"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.price_per_plate"]}</p>}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Plates Required</label>
-                  <input
-                    type="number"
-                    min={20}
-                    value={detailForm.min_plates || ""}
-                    onChange={(e) => handleDetailChange("min_plates", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Menu Items & Descriptions</label>
-                <textarea
-                  value={detailForm.description || ""}
-                  rows={4}
-                  placeholder="Provide starters, mains, dessert lists..."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
-            </div>
-          )}
 
           {/* DECORATOR */}
           {type === "decorator" && (
@@ -1089,8 +1241,8 @@ function EditListingForm() {
         </div>
       )}
 
-      {/* STEP 3: MEDIA UPLOAD & SUBMIT */}
-      {step === 3 && (
+      {/* STEP 3: MEDIA UPLOAD & SUBMIT FOR NON-CATERERS */}
+      {step === 3 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
             <h2 className="text-base font-semibold text-gray-900 font-heading">Media Showcase Upload</h2>
@@ -1144,6 +1296,1007 @@ function EditListingForm() {
               <CheckCircle size={14} className="shrink-0 text-gold mt-0.5" />
               <p>Image files will be linked with your listing profile. You can finalize your changes and save this listing immediately.</p>
             </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex flex-col sm:flex-row sm:justify-between items-center gap-4 pt-3 border-t border-gray-100">
+            <button
+              onClick={handleBack}
+              disabled={loading}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center justify-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => handleSubmit("draft")}
+                disabled={loading}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-950 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm"
+              >
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Save as Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit("pending_approval")}
+                disabled={loading}
+                className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
+              >
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                Submit for Approval
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: MASTER MENU LIBRARY FOR CATERER */}
+      {step === 3 && type === "caterer" && (() => {
+        // Local state via refs-based approach via detailForm.menu_items
+        const menuItems: any[] = detailForm.menu_items || [];
+
+        const COURSES = [
+          { value: "all",               label: "All",               color: "bg-zinc-100 text-zinc-600" },
+          { value: "starter",           label: "Starters",          color: "bg-amber-50 text-amber-600" },
+          { value: "live",              label: "Live Counter",      color: "bg-purple-50 text-purple-700" },
+          { value: "soup",              label: "Soup",              color: "bg-red-50 text-red-655" },
+          { value: "special_veg",       label: "Special Veg",       color: "bg-orange-50 text-orange-600" },
+          { value: "seasonal_veg",      label: "Seasonal Veg",      color: "bg-teal-50 text-teal-600" },
+          { value: "dal",               label: "Dal",               color: "bg-yellow-50 text-yellow-600" },
+          { value: "rice",              label: "Rice",              color: "bg-indigo-50 text-indigo-655" },
+          { value: "breads",            label: "Breads Basket",     color: "bg-yellow-50 text-yellow-755" },
+          { value: "dessert",           label: "Dessert",           color: "bg-pink-50 text-pink-600" },
+          { value: "welcome",           label: "Welcome Drink",     color: "bg-blue-50 text-blue-600" },
+          { value: "special_additions", label: "Special Additions", color: "bg-cyan-50 text-cyan-600" },
+          { value: "other",             label: "Other",             color: "bg-slate-50 text-slate-600" },
+        ];
+
+        const courseFilter = detailForm._menuCourseFilter || "all";
+        const editingIdx   = detailForm._editingMenuIdx ?? null;
+
+        const filteredItems = courseFilter === "all"
+          ? menuItems
+          : menuItems.filter((m: any) => m.course === courseFilter);
+
+        const countFor = (c: string) =>
+          c === "all" ? menuItems.length : menuItems.filter((m: any) => m.course === c).length;
+
+        const handleMenuCsvImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const text = evt.target?.result as string;
+            const lines = text.split("\n").filter(Boolean);
+            // Skip header row: name,course,is_veg,is_jain,is_spicy,addon_price,description
+            const imported: any[] = [];
+            lines.slice(1).forEach((line) => {
+              const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+              const name = cols[0];
+              if (!name) return;
+              imported.push({
+                name,
+                course: cols[1] || "main",
+                is_veg: cols[2] === "true" || cols[2] === "1" || cols[2] === "yes",
+                is_jain: cols[3] === "true" || cols[3] === "1" || cols[3] === "yes",
+                is_spicy: cols[4] === "true" || cols[4] === "1" || cols[4] === "yes",
+                addon_price: parseFloat(cols[5] || "0") || 0,
+                description: cols[6] || "",
+              });
+            });
+            if (imported.length > 0) {
+              handleDetailChange("menu_items", [...menuItems, ...imported]);
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = "";
+        };
+
+        return (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 font-heading">Master Menu Library</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Add, edit and organise every dish you offer across all packages. Customers can browse and customise.</p>
+            </div>
+            {/* CSV Import Button */}
+            <label className="relative shrink-0 cursor-pointer text-xs font-semibold text-gold hover:text-black border border-gold/30 hover:border-gold rounded-lg px-3 py-2 flex items-center gap-1.5 transition-colors">
+              <Upload size={13} />
+              Import CSV
+              <input
+                type="file"
+                accept=".csv"
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                onChange={handleMenuCsvImport}
+              />
+            </label>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Add dish inline form */}
+          <div className="p-4 border border-gold/20 rounded-2xl bg-gold/5 space-y-3">
+            <h4 className="text-[10px] font-bold text-gold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded-full bg-gold text-black flex items-center justify-center text-[8px] font-black">+</span>
+              Add Dish to Library
+            </h4>
+            {/* Global Catalog Selector */}
+            {masterFoodItems.length > 0 && (
+              <div className="space-y-1 pb-1">
+                <label className="text-[9px] font-bold text-gold uppercase block">Select from Shared Database Catalog (Optional)</label>
+                <select
+                  id="select-master-food"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    const matched = masterFoodItems.find((x) => String(x.id) === val);
+                    if (matched) {
+                      const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                      const descEl = document.getElementById("new-dish-desc") as HTMLInputElement;
+                      
+                      const vegBtn = document.getElementById("nd-veg") as HTMLButtonElement;
+                      const jainBtn = document.getElementById("nd-jain") as HTMLButtonElement;
+                      const spicyBtn = document.getElementById("nd-spicy") as HTMLButtonElement;
+
+                      if (nameEl) nameEl.value = matched.name;
+                      if (descEl) descEl.value = matched.description || "";
+
+                      // Update buttons active status
+                      if (vegBtn) {
+                        vegBtn.dataset.active = matched.is_veg ? "true" : "false";
+                        vegBtn.className = matched.is_veg
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                      if (jainBtn) {
+                        jainBtn.dataset.active = matched.is_jain ? "true" : "false";
+                        jainBtn.className = matched.is_jain
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                      if (spicyBtn) {
+                        spicyBtn.dataset.active = matched.is_spicy ? "true" : "false";
+                        spicyBtn.className = matched.is_spicy
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                    }
+                  }}
+                  className="w-full border border-gold/30 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                >
+                  <option value="">-- Choose a standard dish --</option>
+                  {masterFoodItems
+                    .filter((item) => item.course === newDishCourse)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Dish Name *</label>
+                <input
+                  type="text"
+                  id="new-dish-name"
+                  placeholder="e.g. Paneer Pasanda, Dal Makhni"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/20"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Course</label>
+                <select
+                  id="new-dish-course"
+                  value={newDishCourse}
+                  onChange={(e) => {
+                    setNewDishCourse(e.target.value);
+                    const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                    if (nameEl) nameEl.value = ""; // Clear input on course change
+                    const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
+                    if (selectCatalog) selectCatalog.value = ""; // Reset catalog select
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="live">Live Counter</option>
+                  <option value="soup">Soup</option>
+                  <option value="special_veg">Special Veg</option>
+                  <option value="seasonal_veg">Seasonal Veg</option>
+                  <option value="dal">Dal</option>
+                  <option value="rice">Rice</option>
+                  <option value="breads">Breads Basket</option>
+                  <option value="dessert">Dessert</option>
+                  <option value="welcome">Welcome Drink</option>
+                  <option value="special_additions">Special Additions</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Short Description</label>
+                <input
+                  type="text"
+                  id="new-dish-desc"
+                  placeholder="Ingredients, style notes..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                />
+              </div>
+              <div className="flex gap-2 justify-between items-end">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-gray-400 uppercase block mb-1">Dietary</label>
+                  <div id="new-dish-dietary" className="flex gap-1.5">
+                    {[
+                      { id: "nd-veg",   label: "Veg",  field: "is_veg",   emoji: "🌿" },
+                      { id: "nd-jain",  label: "Jain", field: "is_jain",  emoji: "🙏" },
+                      { id: "nd-spicy", label: "Hot",  field: "is_spicy", emoji: "🌶️" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        id={opt.id}
+                        data-active="false"
+                        onClick={(e) => {
+                          const btn = e.currentTarget;
+                          const isActive = btn.dataset.active === "true";
+                          btn.dataset.active = isActive ? "false" : "true";
+                          btn.className = isActive
+                            ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all"
+                            : "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all";
+                        }}
+                        className="px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all"
+                        title={opt.label}
+                      >
+                        {opt.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                const courseEl = document.getElementById("new-dish-course") as HTMLSelectElement;
+                const descEl = document.getElementById("new-dish-desc") as HTMLInputElement;
+                const vegBtn = document.getElementById("nd-veg") as HTMLButtonElement;
+                const jainBtn = document.getElementById("nd-jain") as HTMLButtonElement;
+                const spicyBtn = document.getElementById("nd-spicy") as HTMLButtonElement;
+                
+                const name = nameEl?.value.trim();
+                if (!name) return;
+
+                const course = courseEl?.value || "main";
+                const is_veg = vegBtn?.dataset.active === "true";
+                const is_jain = jainBtn?.dataset.active === "true";
+                const is_spicy = spicyBtn?.dataset.active === "true";
+                const description = descEl?.value.trim() || "";
+
+                // 1. Check if it already exists in the standard catalog
+                let masterFoodItem = masterFoodItems.find(
+                  (x) => x.name.toLowerCase() === name.toLowerCase() && x.course === course
+                );
+
+                // 2. If it does not exist, save it globally on the backend
+                if (!masterFoodItem) {
+                  try {
+                    const res = await api.post("/catering/master-food-items/", {
+                      name,
+                      course,
+                      is_veg,
+                      is_jain,
+                      is_spicy,
+                      description
+                    });
+                    masterFoodItem = res.data;
+                    setMasterFoodItems((prev) => [...prev, masterFoodItem]);
+                  } catch (err) {
+                    console.error("Error creating custom master food item:", err);
+                  }
+                }
+
+                // 3. Add to the local caterer package selection
+                const list = [...menuItems, {
+                  name,
+                  course,
+                  is_veg,
+                  is_jain,
+                  is_spicy,
+                  description,
+                  master_food_item: masterFoodItem ? masterFoodItem.id : null
+                }];
+                
+                handleDetailChange("menu_items", list);
+                nameEl.value = "";
+                if (descEl) descEl.value = "";
+                
+                // Reset select dropdown
+                const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
+                if (selectCatalog) selectCatalog.value = "";
+
+                // Reset dietary toggles
+                [vegBtn, jainBtn, spicyBtn].forEach((btn) => {
+                  if (btn) {
+                    btn.dataset.active = "false";
+                    btn.className = "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                  }
+                });
+              }}
+              className="w-full btn-gold rounded-lg py-2 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <span className="text-sm font-black">+</span> Add Dish to Library
+            </button>
+          </div>
+
+          {/* CSV Template Download Hint */}
+          <div className="bg-blue-50/60 border border-blue-200/50 rounded-xl p-3 text-[11px] text-blue-700 flex items-start gap-2">
+            <Upload size={13} className="shrink-0 mt-0.5 text-blue-500" />
+            <p>
+              <span className="font-bold">CSV Import Format:</span> name, course, is_veg, is_jain, is_spicy, addon_price, description
+              — one dish per row. Accepted course values: <span className="font-mono bg-blue-100 px-1 rounded">starter | main | dessert | welcome | live | other</span>
+            </p>
+          </div>
+
+          {/* Course filter tabs */}
+          {menuItems.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {COURSES.map((c) => {
+                const count = countFor(c.value);
+                if (c.value !== "all" && count === 0) return null;
+                const isActive = courseFilter === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => handleDetailChange("_menuCourseFilter", c.value)}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all flex items-center gap-1 ${
+                      isActive
+                        ? "bg-gold text-black border-gold shadow-sm"
+                        : `${c.color} border-transparent hover:border-gray-300`
+                    }`}
+                  >
+                    {c.label}
+                    <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black ${isActive ? "bg-black/20 text-black" : "bg-black/10"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Dishes list table */}
+          <div className="border border-gray-150 rounded-xl overflow-hidden shadow-sm bg-white">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-gray-150 text-gray-500 font-semibold">
+                  <th className="p-3">Dish Name</th>
+                  <th className="p-3">Course</th>
+                  <th className="p-3 text-center">Dietary</th>
+                  <th className="p-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-gray-400 italic">
+                      {menuItems.length === 0
+                        ? "No dishes added yet. Use the form above or import a CSV sheet."
+                        : `No dishes in the "${COURSES.find(c => c.value === courseFilter)?.label}" course.`}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredItems.map((m: any) => {
+                    // find real index in the unfiltered list
+                    const realIdx = menuItems.indexOf(m);
+                    const isEditing = editingIdx === realIdx;
+                    return (
+                      <tr key={realIdx} className={`border-b border-gray-50 transition-colors ${isEditing ? "bg-gold/5" : "hover:bg-slate-50/50"}`}>
+                        <td className="p-3">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              defaultValue={m.name}
+                              id={`edit-name-${realIdx}`}
+                              className="w-full border border-gold/30 rounded-lg px-2 py-1 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                            />
+                          ) : (
+                            <span className="font-semibold text-gray-900">{m.name}</span>
+                          )}
+                          {m.description && !isEditing && (
+                            <p className="text-[9px] text-gray-400 mt-0.5 italic truncate max-w-[180px]">{m.description}</p>
+                          )}
+                          {isEditing && (
+                            <input
+                              type="text"
+                              defaultValue={m.description}
+                              id={`edit-desc-${realIdx}`}
+                              placeholder="Description..."
+                              className="w-full border border-gray-200 rounded-lg px-2 py-0.5 text-[10px] bg-white text-gray-500 mt-1 focus:outline-none"
+                            />
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {isEditing ? (
+                            <select
+                              defaultValue={m.course}
+                              id={`edit-course-${realIdx}`}
+                              className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                            >
+                              <option value="starter">Starter</option>
+                              <option value="live">Live Counter</option>
+                              <option value="soup">Soup</option>
+                              <option value="special_veg">Special Veg</option>
+                              <option value="seasonal_veg">Seasonal Veg</option>
+                              <option value="dal">Dal</option>
+                              <option value="rice">Rice</option>
+                              <option value="breads">Breads Basket</option>
+                              <option value="dessert">Dessert</option>
+                              <option value="welcome">Welcome Drink</option>
+                              <option value="special_additions">Special Additions</option>
+                              <option value="other">Other</option>
+                            </select>
+                          ) : (
+                            <span className="capitalize text-gray-500">{m.course}</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex gap-1.5 justify-center">
+                            {[
+                              { field: "is_veg",   label: "Veg",  emoji: "🌿", id: `edit-veg-${realIdx}` },
+                              { field: "is_jain",  label: "Jain", emoji: "🙏", id: `edit-jain-${realIdx}` },
+                              { field: "is_spicy", label: "Hot",  emoji: "🌶️", id: `edit-spicy-${realIdx}` },
+                            ].map((opt) =>
+                              isEditing ? (
+                                <button
+                                  key={opt.field}
+                                  type="button"
+                                  id={opt.id}
+                                  data-active={m[opt.field] ? "true" : "false"}
+                                  onClick={(e) => {
+                                    const btn = e.currentTarget;
+                                    const a = btn.dataset.active === "true";
+                                    btn.dataset.active = a ? "false" : "true";
+                                    btn.className = a
+                                      ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all"
+                                      : "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all";
+                                  }}
+                                  className={`px-1.5 py-1 rounded border text-[9px] font-bold transition-all ${
+                                    m[opt.field]
+                                      ? "border-gold/60 bg-gold/10 text-gold"
+                                      : "border-gray-200 bg-white text-gray-400"
+                                  }`}
+                                  title={opt.label}
+                                >
+                                  {opt.emoji}
+                                </button>
+                              ) : (
+                                <span
+                                  key={opt.field}
+                                  className={`text-sm ${m[opt.field] ? "opacity-100" : "opacity-20"}`}
+                                  title={opt.label}
+                                >
+                                  {opt.emoji}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <div className="flex gap-1.5 justify-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nameEl = document.getElementById(`edit-name-${realIdx}`) as HTMLInputElement;
+                                  const courseEl = document.getElementById(`edit-course-${realIdx}`) as HTMLSelectElement;
+                                  const descEl = document.getElementById(`edit-desc-${realIdx}`) as HTMLInputElement;
+                                  const vegBtn = document.getElementById(`edit-veg-${realIdx}`) as HTMLButtonElement;
+                                  const jainBtn = document.getElementById(`edit-jain-${realIdx}`) as HTMLButtonElement;
+                                  const spicyBtn = document.getElementById(`edit-spicy-${realIdx}`) as HTMLButtonElement;
+                                  
+                                  const list = [...menuItems];
+                                  list[realIdx] = {
+                                    ...list[realIdx],
+                                    name: nameEl?.value.trim() || m.name,
+                                    course: courseEl?.value || m.course,
+                                    description: descEl?.value.trim() || "",
+                                    is_veg:   vegBtn?.dataset.active === "true",
+                                    is_jain:  jainBtn?.dataset.active === "true",
+                                    is_spicy: spicyBtn?.dataset.active === "true",
+                                  };
+                                  handleDetailChange("menu_items", list);
+                                  handleDetailChange("_editingMenuIdx", null);
+                                }}
+                                className="text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:bg-emerald-50 px-2.5 py-1.5 rounded-lg transition-all font-semibold"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDetailChange("_editingMenuIdx", null)}
+                                className="text-gray-500 hover:text-black border border-gray-200 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg transition-all font-semibold"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-1.5 justify-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDetailChange("_editingMenuIdx", realIdx)}
+                                className="text-gold hover:text-black border border-gold/20 hover:border-gold/50 px-2.5 py-1.5 rounded-lg transition-all font-semibold"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const list = menuItems.filter((_: any, i: number) => i !== realIdx);
+                                  handleDetailChange("menu_items", list);
+                                }}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg border border-transparent hover:border-red-100 transition-all font-semibold"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary count footer */}
+          {menuItems.length > 0 && (
+            <div className="flex items-center justify-between text-[10px] text-gray-400 px-1">
+              <span>{menuItems.length} dish{menuItems.length !== 1 ? "es" : ""} in library</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Clear all ${menuItems.length} dishes from the library?`)) {
+                    handleDetailChange("menu_items", []);
+                  }
+                }}
+                className="text-red-400 hover:text-red-600 font-semibold transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
+          )}
+
+          {/* Footer Controls */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+            <button
+              onClick={handleBack}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+            >
+              Package Tiers <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+        );
+      })()}
+
+
+      {/* STEP 4: PACKAGE TIERS FOR CATERER */}
+      {step === 4 && type === "caterer" && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Package Tiers (Plans)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Build pricing packages (e.g. Silver, Gold, Platinum) with plate pricing, minimum plates limits, and choose included items.</p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Packages List */}
+          <div className="space-y-4">
+            {detailForm.packages?.map((pkg: any, idx: number) => (
+              <div key={idx} className="p-4 border border-gray-200 rounded-2xl bg-zinc-50/30 space-y-4 relative animate-fade-in">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gold">Plan Option #{idx + 1}</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = detailForm.packages.filter((_: any, i: number) => i !== idx);
+                      handleDetailChange("packages", list);
+                    }}
+                    className="bg-red-50 text-red-500 p-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Name</label>
+                    <input
+                      type="text"
+                      value={pkg.name}
+                      placeholder="e.g. Silver Plan, Premium Gold Banquet"
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].name = e.target.value;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                    />
+                    {formErrors[`details.packages.${idx}.name`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.name`]}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisine type</label>
+                      <select
+                        value={pkg.cuisine_type || "multi"}
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].cuisine_type = e.target.value;
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {CUISINE_CHOICES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service tier</label>
+                      <select
+                        value={pkg.tier || "medium"}
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].tier = e.target.value;
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {TIER_CHOICES.map((t) => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (₹)</label>
+                    <input
+                      type="number"
+                      value={pkg.price_per_plate}
+                      placeholder="e.g. 450"
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].price_per_plate = parseFloat(e.target.value) || "";
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none"
+                    />
+                    {formErrors[`details.packages.${idx}.price_per_plate`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate`]}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Min Plates Limit</label>
+                    <input
+                      type="number"
+                      value={pkg.min_plates}
+                      placeholder="e.g. 80"
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].min_plates = parseInt(e.target.value) || 50;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Phase 5: Surcharges configuration */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Weekend Surcharge (%)</label>
+                    <input
+                      type="number"
+                      value={pkg.weekend_surcharge_pct ?? 0}
+                      placeholder="e.g. 10"
+                      min={0}
+                      max={100}
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].weekend_surcharge_pct = parseFloat(e.target.value) || 0;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2 text-xs bg-white text-gray-900 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Festival/Season Surcharge (%)</label>
+                    <input
+                      type="number"
+                      value={pkg.festival_surcharge_pct ?? 0}
+                      placeholder="e.g. 15"
+                      min={0}
+                      max={100}
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].festival_surcharge_pct = parseFloat(e.target.value) || 0;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2 text-xs bg-white text-gray-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Phase 5: Selectable Dish Limits & Master Menu Checklist */}
+                <div className="space-y-3 border-t border-gray-100 pt-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Selectable Dish Limits Per Section</label>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
+                    {[
+                      { value: "starter",      label: "Starters" },
+                      { value: "main",         label: "Main Course" },
+                      { value: "seasonal_veg", label: "Seasonal Veg" },
+                      { value: "paneer_dish",  label: "Paneer Dishes" },
+                      { value: "breads",       label: "Bread Varieties" },
+                      { value: "dessert",      label: "Desserts" },
+                      { value: "welcome",      label: "Welcome Drinks" },
+                      { value: "live",         label: "Live Counters" },
+                    ].map((section) => {
+                      const constraints = pkg.course_sections?.[section.value] || { min: 1, max: 5 };
+                      return (
+                        <div key={section.value} className="bg-zinc-50/50 p-2.5 border border-gray-150 rounded-xl space-y-1.5">
+                          <span className="text-[10px] font-bold text-gray-600 block">{section.label}</span>
+                          <div className="flex gap-1.5 items-center">
+                            <div className="flex-1">
+                              <span className="text-[8px] text-gray-400 font-bold uppercase block">Min</span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={constraints.min}
+                                onChange={(e) => {
+                                  const list = [...detailForm.packages];
+                                  if (!list[idx].course_sections) list[idx].course_sections = {};
+                                  list[idx].course_sections[section.value] = {
+                                    ...constraints,
+                                    min: parseInt(e.target.value) || 0
+                                  };
+                                  handleDetailChange("packages", list);
+                                }}
+                                className="w-full border border-gray-200 rounded-lg px-1.5 py-0.5 text-xs text-center bg-white text-gray-900"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <span className="text-[8px] text-gray-400 font-bold uppercase block">Max</span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={constraints.max}
+                                onChange={(e) => {
+                                  const list = [...detailForm.packages];
+                                  if (!list[idx].course_sections) list[idx].course_sections = {};
+                                  list[idx].course_sections[section.value] = {
+                                    ...constraints,
+                                    max: parseInt(e.target.value) || 1
+                                  };
+                                  handleDetailChange("packages", list);
+                                }}
+                                className="w-full border border-gray-200 rounded-lg px-1.5 py-0.5 text-xs text-center bg-white text-gray-900"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Included library items table checklist */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Select Included Dishes from Library</label>
+                    {(!detailForm.menu_items || detailForm.menu_items.length === 0) ? (
+                      <p className="text-xs text-gray-400 italic">No dishes added to your Master Menu Library yet. Please add them in Step 3 first.</p>
+                    ) : (
+                      <div className="border border-gray-150 rounded-xl overflow-hidden shadow-sm bg-white">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-gray-150 text-gray-500 font-semibold">
+                              <th className="p-2.5 text-center w-12">Select</th>
+                              <th className="p-2.5">Dish Name</th>
+                              <th className="p-2.5">Course</th>
+                              <th className="p-2.5 text-right">Add-on Price</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailForm.menu_items.map((m: any, mIdx: number) => {
+                              // We track package included items using pkg.included_items list or names mapping
+                              if (!pkg.included_item_names) pkg.included_item_names = [];
+                              const isChecked = pkg.included_item_names.includes(m.name);
+                              
+                              const limit = pkg.course_sections?.[m.course] || { min: 1, max: 5 };
+                              const matchedSelectedInCourse = detailForm.menu_items.filter((x: any) => 
+                                x.course === m.course && pkg.included_item_names.includes(x.name)
+                              );
+
+                              return (
+                                <tr key={mIdx} className="border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
+                                  <td className="p-2.5 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        const list = [...detailForm.packages];
+                                        if (!list[idx].included_item_names) list[idx].included_item_names = [];
+                                        
+                                        if (isChecked) {
+                                          list[idx].included_item_names = list[idx].included_item_names.filter((name: string) => name !== m.name);
+                                        } else {
+                                          // FIFO replacement logic: if selecting exceeds max constraint limits
+                                          if (matchedSelectedInCourse.length >= limit.max) {
+                                            const oldestSelected = matchedSelectedInCourse[0];
+                                            if (oldestSelected) {
+                                              list[idx].included_item_names = [
+                                                ...list[idx].included_item_names.filter((name: string) => name !== oldestSelected.name),
+                                                m.name
+                                              ];
+                                              handleDetailChange("packages", list);
+                                              return;
+                                            }
+                                          }
+                                          list[idx].included_item_names.push(m.name);
+                                        }
+                                        handleDetailChange("packages", list);
+                                      }}
+                                      className="accent-gold w-3.5 h-3.5"
+                                    />
+                                  </td>
+                                  <td className="p-2.5 font-semibold text-gray-800">{m.name}</td>
+                                  <td className="p-2.5 text-gray-500 capitalize">{m.course}</td>
+                                  <td className="p-2.5 text-right text-gray-700">₹{m.addon_price || 0}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+
+
+                {/* Phase 5: Live Pricing Quote Calculator Preview */}
+                {pkg.price_per_plate && (
+                  <div className="bg-amber-50/50 border border-amber-500/10 p-4 rounded-xl space-y-2">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Live Quote Estimator (Preview)</h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[9px] text-gray-400 uppercase font-bold">Estimated Guest Count</label>
+                        <input
+                          type="number"
+                          id={`calc-guests-${idx}`}
+                          defaultValue={pkg.min_plates || 100}
+                          onChange={() => {
+                            // Trigger calculation recalculation (ref-based or inline update)
+                            handleDetailChange("_forceRecalcTrigger", Date.now());
+                          }}
+                          className="w-full border border-amber-200 rounded-lg px-2.5 py-1 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-4">
+                        <input
+                          type="checkbox"
+                          id={`calc-weekend-${idx}`}
+                          onChange={() => handleDetailChange("_forceRecalcTrigger", Date.now())}
+                          className="accent-gold"
+                        />
+                        <label htmlFor={`calc-weekend-${idx}`} className="text-[10px] text-gray-600 font-bold select-none cursor-pointer">Weekend Event?</label>
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-4">
+                        <input
+                          type="checkbox"
+                          id={`calc-festival-${idx}`}
+                          onChange={() => handleDetailChange("_forceRecalcTrigger", Date.now())}
+                          className="accent-gold"
+                        />
+                        <label htmlFor={`calc-festival-${idx}`} className="text-[10px] text-gray-600 font-bold select-none cursor-pointer">Festival Surcharge?</label>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const guestCountEl = document.getElementById(`calc-guests-${idx}`) as HTMLInputElement;
+                      const isWeekendEl  = document.getElementById(`calc-weekend-${idx}`) as HTMLInputElement;
+                      const isFestivalEl = document.getElementById(`calc-festival-${idx}`) as HTMLInputElement;
+                      
+                      const guestCount = guestCountEl ? (parseInt(guestCountEl.value) || 0) : (pkg.min_plates || 100);
+                      const isWeekend  = isWeekendEl ? isWeekendEl.checked : false;
+                      const isFestival = isFestivalEl ? isFestivalEl.checked : false;
+
+                      // Pricing subtotal calculation
+                      const basePrice = parseFloat(pkg.price_per_plate) || 0;
+                      const rawSubtotal = basePrice * guestCount;
+
+                      const weekendSurcharge = isWeekend ? (rawSubtotal * (parseFloat(pkg.weekend_surcharge_pct) || 0) / 100) : 0;
+                      const festivalSurcharge = isFestival ? (rawSubtotal * (parseFloat(pkg.festival_surcharge_pct) || 0) / 100) : 0;
+                      
+                      const subtotal = rawSubtotal + weekendSurcharge + festivalSurcharge;
+                      const platformRoyalty = subtotal * 0.05;
+                      const gst = (subtotal + platformRoyalty) * 0.18;
+                      const total = subtotal + platformRoyalty + gst;
+
+                      return (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 border-t border-amber-200/50 pt-2.5 text-[11px]">
+                          <div>
+                            <span className="text-gray-400 uppercase font-bold text-[9px] block">Base Cost</span>
+                            <span className="font-semibold text-gray-900">₹{rawSubtotal.toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 uppercase font-bold text-[9px] block">Surcharges</span>
+                            <span className="font-semibold text-gray-900">₹{(weekendSurcharge + festivalSurcharge).toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 uppercase font-bold text-[9px] block">Fees & Taxes</span>
+                            <span className="font-semibold text-gray-900">₹{(platformRoyalty + gst).toLocaleString()}</span>
+                          </div>
+                          <div className="border-l border-amber-200/50 pl-2">
+                            <span className="text-amber-800 uppercase font-bold text-[9px] block">Grand Total</span>
+                            <span className="font-bold text-gold text-xs">₹{Math.round(total).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {formErrors["details.packages"] && <p className="text-xs text-red-500 font-semibold">{formErrors["details.packages"]}</p>}
+
+            <button
+              type="button"
+              onClick={() => {
+                const list = [
+                  ...(detailForm.packages || []),
+                  {
+                    name: "",
+                    cuisine_type: "multi",
+                    tier: "medium",
+                    price_per_plate: "",
+                    min_plates: 80,
+                    description: "",
+                    weekend_surcharge_pct: 0,
+                    festival_surcharge_pct: 0,
+                    course_sections: {
+                      starter: { min: 1, max: 4 },
+                      main: { min: 2, max: 5 },
+                      dessert: { min: 1, max: 2 },
+                      welcome: { min: 1, max: 2 },
+                      live: { min: 0, max: 1 }
+                    }
+                  }
+                ];
+                handleDetailChange("packages", list);
+              }}
+              className="w-full border border-dashed border-gray-300 py-3.5 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
+            >
+              + Create New Pricing Plan Tier
+            </button>
           </div>
 
           {/* Controls */}
