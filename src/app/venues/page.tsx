@@ -86,6 +86,8 @@ function VenuesPageContent() {
     }
   }, []);
 
+  const searchParamsStr = searchParams.toString();
+
   useEffect(() => {
     const c = searchParams.get("city") || "";
     const g = searchParams.get("guests") || "";
@@ -94,7 +96,7 @@ function VenuesPageContent() {
     const date  = searchParams.get("date") || "";
     setCity(c); setGuests(g); setSearch(s); setPriceRange(price); setEventDate(date);
     fetchVenues(c, g, s, price, date);
-  }, [searchParams, fetchVenues]);
+  }, [searchParamsStr, fetchVenues]);
 
   const handleApplyFilters = () => {
     const params = new URLSearchParams();
@@ -105,12 +107,14 @@ function VenuesPageContent() {
     if (eventDate)  params.set("date",   eventDate);
     router.push(`/venues?${params.toString()}`);
     setShowFilters(false);
+    fetchVenues(city, guests, search, priceRange, eventDate);
   };
 
   const handleClearFilters = () => {
     setCity(""); setGuests(""); setSearch(""); setPriceRange(""); setEventDate("");
     router.push("/venues");
     setShowFilters(false);
+    fetchVenues("", "", "", "", "");
   };
 
   const hasActiveFilters = !!(city || guests || search || priceRange || eventDate);
