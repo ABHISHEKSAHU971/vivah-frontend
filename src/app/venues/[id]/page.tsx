@@ -18,6 +18,12 @@ const MOCK_VENUE_DATA: Record<number, any> = {
   3: { id: 3, name: "Shree Residency", venue_type: "Heritage Hotel", city: "Jaipur", state: "Rajasthan", price_per_day: "175000.00", avg_rating: "4.9", total_bookings: 213, guests: 300, is_ac: true, has_parking: true, description: "Immerse your guests in Royal Rajasthani heritage. Features hand-painted fresco ceilings, beautiful inner courtyard architecture, and custom local folk packages.", image: "https://images.unsplash.com/photo-1510076857177-7470076d4098?w=800&q=80" },
 };
 
+const VENUE_IMAGES = [
+  "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=800&q=80",
+  "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800&q=80",
+  "https://images.unsplash.com/photo-1510076857177-7470076d4098?w=800&q=80",
+];
+
 const INHOUSE_THEMES = [
   { id: "standard", name: "Standard Theme", price: 0, tier: "low" },
   { id: "royal", name: "Premium Royal Theme", price: 25000, tier: "average" },
@@ -27,7 +33,24 @@ const INHOUSE_THEMES = [
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const venueId = Number(unwrappedParams.id);
-  const venue = MOCK_VENUE_DATA[venueId] || MOCK_VENUE_DATA[1];
+
+  // Fetch actual venue details from backend
+  const { data: dbVenue, isLoading: isVenueLoading } = useQuery({
+    queryKey: ["venueDetail", venueId],
+    queryFn: async () => {
+      const response = await api.get(`/venues/venues/${venueId}/`);
+      return response.data?.data || response.data;
+    },
+    retry: false,
+  });
+
+  const venue = dbVenue
+    ? {
+        ...dbVenue,
+        guests: dbVenue.max_capacity,
+        image: dbVenue.images?.[0]?.image || VENUE_IMAGES[venueId % VENUE_IMAGES.length],
+      }
+    : (MOCK_VENUE_DATA[venueId] || MOCK_VENUE_DATA[1]);
   
   // App store auth & fields
   const storeToken = useStore((s) => s.token);
@@ -58,8 +81,30 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   // Calculator States
   const [guests, setGuests] = useState<number>(150);
   const [eventDate, setEventDate] = useState<string>("");
-  const [decorType, setDecorType] = useState<"inhouse" | "external" | "none">("inhouse");
+  const [cateringSource, setCateringSource] = useState<"inhouse" | "external" | "none">("inhouse");
+  const [decorSource, setDecorSource] = useState<"inhouse" | "external" | "none">("inhouse");
   const [selectedTheme, setSelectedTheme] = useState<string>("standard");
+
+  // Initialize independent source choices from venue policies once dbVenue is loaded
+  useEffect(() => {
+    if (dbVenue) {
+      if (dbVenue.catering_policy === "external") {
+        setCateringSource("external");
+      } else if (dbVenue.catering_policy === "none") {
+        setCateringSource("none");
+      } else {
+        setCateringSource("inhouse");
+      }
+
+      if (dbVenue.decoration_policy === "external") {
+        setDecorSource("external");
+      } else if (dbVenue.decoration_policy === "none") {
+        setDecorSource("none");
+      } else {
+        setDecorSource("inhouse");
+      }
+    }
+  }, [dbVenue]);
 
   // External package customizer states
   const [selectedCateringPkgId, setSelectedCateringPkgId] = useState<string>("");
@@ -74,7 +119,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       venueId, 
       isVerified, 
       guests, 
-      decorType, 
+      cateringSource,
+      decorSource,
       selectedCateringPkgId, 
       selectedDecorPkgId, 
       selectedDecorTier,
@@ -82,15 +128,27 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       selectedFoodIds
     ],
     queryFn: async () => {
+      let decor_type = "inhouse";
+      if (cateringSource === "external" || decorSource === "external") {
+        decor_type = "external";
+      } else if (cateringSource === "none" && decorSource === "none") {
+        decor_type = "none";
+      }
+
       const params: any = {
         guest_count: guests,
-        decor_type: decorType,
+        decor_type: decor_type,
       };
-      if (decorType === "external") {
-        if (selectedCateringPkgId) params.catering_package_id = selectedCateringPkgId;
-        if (selectedDecorPkgId) params.decoration_package_id = selectedDecorPkgId;
-        params.decoration_tier = selectedDecorTier;
-      } else if (decorType === "inhouse") {
+
+      if (decor_type === "external") {
+        if (cateringSource === "external" && selectedCateringPkgId) {
+          params.catering_package_id = selectedCateringPkgId;
+        }
+        if (decorSource === "external" && selectedDecorPkgId) {
+          params.decoration_package_id = selectedDecorPkgId;
+          params.decoration_tier = selectedDecorTier;
+        }
+      } else if (decor_type === "inhouse") {
         const themeTierMap: Record<string, string> = {
           standard: "low",
           royal: "average",
@@ -107,7 +165,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         let basePlatePrice = 600;
         let addonPricePerPlate = 0;
         
-        if (selectedCateringPkgId && cateringPackages) {
+        if (cateringSource === "external" && selectedCateringPkgId && cateringPackages) {
           const matchedPkg = cateringPackages.find((p: any) => String(p.id) === String(selectedCateringPkgId));
           if (matchedPkg) {
             basePlatePrice = Number(matchedPkg.price_per_plate) || 0;
@@ -121,10 +179,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           }
         }
         
-        const cateringVal = decorType !== "none" ? guests * (basePlatePrice + addonPricePerPlate) : 0;
-        const decorVal = decorType === "inhouse" 
-          ? (selectedTheme === "royal" ? 50000 : selectedTheme === "floral" ? 65000 : 25000)
-          : decorType === "external" ? 30000 : 0;
+        const cateringVal = cateringSource === "none" ? 0 : guests * (basePlatePrice + addonPricePerPlate);
+        let decorVal = 0;
+        if (decorSource === "inhouse") {
+          decorVal = selectedTheme === "royal" ? 50000 : selectedTheme === "floral" ? 65000 : 25000;
+        } else if (decorSource === "external") {
+          decorVal = 30000;
+        }
+        
         const subtotalVal = rentVal + cateringVal + decorVal;
         const royaltyVal = subtotalVal * 0.05;
         const gstVal = (subtotalVal + royaltyVal) * 0.18;
@@ -227,7 +289,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       });
       return response.data;
     },
-    enabled: isVerified && decorType === "external",
+    enabled: isVerified && decorSource === "external",
   });
 
   // Auto-select first catering package when loaded
@@ -412,7 +474,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       const clientPhone = storeUser?.phone || storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`;
 
       // If caterer package selected, submit catering booking request
-      if (decorType === "external" && selectedCateringPkgId) {
+      if (cateringSource === "external" && selectedCateringPkgId) {
         api.post("/catering/catering-bookings/", {
           venue: venueId,
           catering_package: Number(selectedCateringPkgId),
@@ -436,9 +498,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           guest_count: Number(guests),
           event_date: eventDate,
           venue: venueId,
-          catering_package: decorType === "external" && selectedCateringPkgId ? Number(selectedCateringPkgId) : null,
-          decoration_package: decorType === "external" && selectedDecorPkgId ? Number(selectedDecorPkgId) : null,
-          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Decor Choice = ${decorType}, Catering Package = ${selectedCateringPkgId || "inhouse"} (Dishes selected: ${selectedFoodIds.join(",")}), Decoration Package = ${selectedDecorPkgId || "inhouse"}.`,
+          catering_package: cateringSource === "external" && selectedCateringPkgId ? Number(selectedCateringPkgId) : null,
+          decoration_package: decorSource === "external" && selectedDecorPkgId ? Number(selectedDecorPkgId) : null,
+          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Catering Choice = ${cateringSource} (Package = ${selectedCateringPkgId || "inhouse"}), Decor Choice = ${decorSource} (Package = ${selectedDecorPkgId || "inhouse"}).`,
         },
         {
           onSuccess: () => {
@@ -598,6 +660,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     );
   };
 
+  if (isVenueLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-[#f5f3ef]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+      </div>
+    );
+  }
+
   const isMutating = sendOtpMutation.isPending || verifyOtpMutation.isPending || submitInquiryMutation.isPending;
 
   return (
@@ -708,27 +778,95 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         />
                       </div>
 
+                      {/* Catering Provider Choice */}
                       <div>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Decor Choice</label>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Catering Provider</label>
+                          {venue.catering_policy === "inhouse" && (
+                            <span className="text-[9px] text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-250/20">In-house Mandatory</span>
+                          )}
+                          {venue.catering_policy === "external" && (
+                            <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/50">External Only</span>
+                          )}
+                          {venue.catering_policy === "none" && (
+                            <span className="text-[9px] text-gray-500 font-semibold bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">Not Allowed</span>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 gap-2 bg-gray-50 p-1 rounded-xl">
                           <button
                             type="button"
-                            onClick={() => setDecorType("inhouse")}
-                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${decorType === "inhouse" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                            disabled={venue.catering_policy === "external" || venue.catering_policy === "none"}
+                            onClick={() => setCateringSource("inhouse")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${cateringSource === "inhouse" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
                           >
                             In-house
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDecorType("external")}
-                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${decorType === "external" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                            disabled={venue.catering_policy === "inhouse" || venue.catering_policy === "none"}
+                            onClick={() => setCateringSource("external")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${cateringSource === "external" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
                           >
-                            External Vendor
+                            External Caterer
                           </button>
                         </div>
                       </div>
 
-                      {decorType === "inhouse" && (
+                      {/* External Catering Package Selector */}
+                      {cateringSource === "external" && (
+                        <div className="space-y-1 mt-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Select External Caterer</label>
+                          <select
+                            value={selectedCateringPkgId}
+                            onChange={(e) => setSelectedCateringPkgId(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                          >
+                            <option value="">-- Select Caterer --</option>
+                            {cateringPackages?.map((pkg: any) => (
+                              <option key={pkg.id} value={pkg.id}>
+                                {pkg.vendor_name || "External Caterer"} - {pkg.name} (₹{Number(pkg.price_per_plate).toLocaleString("en-IN")}/plate)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Decoration Choice */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Decoration Provider</label>
+                          {venue.decoration_policy === "inhouse" && (
+                            <span className="text-[9px] text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-250/20">In-house Mandatory</span>
+                          )}
+                          {venue.decoration_policy === "external" && (
+                            <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/50">External Only</span>
+                          )}
+                          {venue.decoration_policy === "none" && (
+                            <span className="text-[9px] text-gray-500 font-semibold bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">Not Allowed</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 bg-gray-50 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            disabled={venue.decoration_policy === "external" || venue.decoration_policy === "none"}
+                            onClick={() => setDecorSource("inhouse")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${decorSource === "inhouse" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            In-house
+                          </button>
+                          <button
+                            type="button"
+                            disabled={venue.decoration_policy === "inhouse" || venue.decoration_policy === "none"}
+                            onClick={() => setDecorSource("external")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${decorSource === "external" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            External Decorator
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* In-house Decor Theme Upgrade */}
+                      {decorSource === "inhouse" && (
                         <div>
                           <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Decor Theme Upgrade</label>
                           <select
@@ -745,26 +883,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         </div>
                       )}
 
-                      {decorType === "external" && (
+                      {/* External Decor Package Selectors */}
+                      {decorSource === "external" && (
                         <div className="space-y-3 font-body">
                           <div>
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">External Caterer</label>
-                            <select
-                              value={selectedCateringPkgId}
-                              onChange={(e) => setSelectedCateringPkgId(e.target.value)}
-                              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
-                            >
-                              <option value="">-- Select Caterer --</option>
-                              {cateringPackages?.map((pkg: any) => (
-                                <option key={pkg.id} value={pkg.id}>
-                                  {pkg.vendor_name || "External Caterer"} - {pkg.name} (₹{Number(pkg.price_per_plate).toLocaleString("en-IN")}/plate)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">External Decorator</label>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Select External Decorator</label>
                             <select
                               value={selectedDecorPkgId}
                               onChange={(e) => setSelectedDecorPkgId(e.target.value)}
@@ -806,13 +929,15 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         <span>Base Rent</span>
                         <span>₹{currentDetails.rent.toLocaleString("en-IN")}</span>
                       </div>
-                      {decorType !== "none" && (
+                      {cateringSource !== "none" && (
+                        <div className="flex justify-between">
+                          <span>Catering ({guests} guests - {cateringSource === "external" ? "External" : "In-house"})</span>
+                          <span>₹{currentDetails.catering.toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
+                      {decorSource !== "none" && (
                         <>
-                          <div className="flex justify-between">
-                            <span>Catering ({guests} guests)</span>
-                            <span>₹{currentDetails.catering.toLocaleString("en-IN")}</span>
-                          </div>
-                          {decorType === "inhouse" ? (
+                          {decorSource === "inhouse" ? (
                             <>
                               <div className="flex justify-between">
                                 <span>In-house Decor (Base Cost)</span>
@@ -831,7 +956,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             </>
                           ) : (
                             <div className="flex justify-between">
-                              <span>External Vendor Decor/Royalty</span>
+                              <span>External Decorator Fee</span>
                               <span>₹{currentDetails.decor.toLocaleString("en-IN")}</span>
                             </div>
                           )}
