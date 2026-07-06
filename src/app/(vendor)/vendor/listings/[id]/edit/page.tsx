@@ -58,6 +58,109 @@ const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-w
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
 const PLANNER_SERVICES = ["full_planning", "partial_coordination", "day_of_coordination", "decor_design"];
 
+interface MenuSelection {
+  category: string;
+  customName?: string;
+  count?: number;
+}
+
+const COURSE_TYPES = [
+  { value: "Starters", label: "Starters" },
+  { value: "Live Counters", label: "Live Counters" },
+  { value: "Soup", label: "Soup" },
+  { value: "Salad/Papad/Achar", label: "Salad/Papad/Achar" },
+  { value: "Special Veg", label: "Special Veg" },
+  { value: "Seasonal Veg", label: "Seasonal Veg" },
+  { value: "Dal", label: "Dal" },
+  { value: "Rice", label: "Rice" },
+  { value: "Breads", label: "Breads" },
+  { value: "Desserts", label: "Desserts" },
+  { value: "Welcome Drinks", label: "Welcome Drinks" },
+  { value: "Special Additions", label: "Special Additions" },
+  { value: "Other", label: "Other Option" },
+];
+
+function parseDescriptionToSelections(description: string): MenuSelection[] {
+  if (!description) return [];
+  const selections: MenuSelection[] = [];
+
+  const startersCats = ["Starters", "Live Counters", "Soup"];
+  const mainCourseCats = ["Salad/Papad/Achar", "Special Veg", "Seasonal Veg", "Dal", "Rice", "Breads", "Desserts"];
+  const allPredefined = [...startersCats, ...mainCourseCats, "Welcome Drinks", "Special Additions"];
+
+  const parts = description.split(/(Starters:|Main Course:|Special Additions:)/i);
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i].trim();
+    if (!part) continue;
+
+    const lowerPart = part.toLowerCase();
+    if (lowerPart === "starters:" || lowerPart === "main course:" || lowerPart === "special additions:") {
+      continue;
+    } else {
+      const itemsStr = part.replace(/\.+$/, "").trim();
+      const items = itemsStr.split(/,\s*/);
+      for (const item of items) {
+        const cleaned = item.trim();
+        if (!cleaned) continue;
+
+        const match = cleaned.match(/^([^(]+)(?:\((\d+)\))?$/);
+        if (match) {
+          const name = match[1].trim();
+          const count = match[2] ? parseInt(match[2], 10) : undefined;
+
+          const matchedPredefined = allPredefined.find(p => p.toLowerCase() === name.toLowerCase());
+          if (matchedPredefined) {
+            selections.push({ category: matchedPredefined, count });
+          } else {
+            selections.push({ category: "Other", customName: name, count });
+          }
+        }
+      }
+    }
+  }
+
+  return selections;
+}
+
+function formatSelectionsToDescription(selections: MenuSelection[]): string {
+  const startersGroup: string[] = [];
+  const mainCourseGroup: string[] = [];
+  const specialAdditionsGroup: string[] = [];
+
+  const startersCats = ["Starters", "Live Counters", "Soup"];
+  const mainCourseCats = ["Salad/Papad/Achar", "Special Veg", "Seasonal Veg", "Dal", "Rice", "Breads", "Desserts"];
+
+  selections.forEach((sel) => {
+    let displayName = sel.category === "Other" ? (sel.customName || "Other") : sel.category;
+    let itemStr = displayName;
+    if (sel.count && sel.count > 0) {
+      itemStr += ` (${sel.count})`;
+    }
+
+    if (startersCats.includes(sel.category)) {
+      startersGroup.push(itemStr);
+    } else if (mainCourseCats.includes(sel.category)) {
+      mainCourseGroup.push(itemStr);
+    } else {
+      specialAdditionsGroup.push(itemStr);
+    }
+  });
+
+  const sections: string[] = [];
+  if (startersGroup.length > 0) {
+    sections.push(`Starters: ${startersGroup.join(", ")}`);
+  }
+  if (mainCourseGroup.length > 0) {
+    sections.push(`Main Course: ${mainCourseGroup.join(", ")}`);
+  }
+  if (specialAdditionsGroup.length > 0) {
+    sections.push(`Special Additions: ${specialAdditionsGroup.join(", ")}`);
+  }
+
+  return sections.join(". ") + (sections.length > 0 ? "." : "");
+}
+
 function EditListingForm() {
   const router = useRouter();
   const params = useParams();
@@ -193,7 +296,13 @@ function EditListingForm() {
         } else {
           detailForm.packages.forEach((pkg: any, idx: number) => {
             if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
-            if (!pkg.price_per_plate) errors[`details.packages.${idx}.price_per_plate`] = "Price per plate is required";
+            const option = pkg.material_option || "with_material";
+            if ((option === "with_material" || option === "both") && !pkg.price_per_plate) {
+              errors[`details.packages.${idx}.price_per_plate`] = "Price per plate (With Material) is required";
+            }
+            if ((option === "without_material" || option === "both") && !pkg.price_per_plate_without_material) {
+              errors[`details.packages.${idx}.price_per_plate_without_material`] = "Price per plate (Without Material) is required";
+            }
           });
         }
       }
@@ -272,7 +381,9 @@ function EditListingForm() {
     if (isCaterer && payload.details.packages) {
       payload.details.packages = payload.details.packages.map((pkg: any) => ({
         ...pkg,
-        price_per_plate: parseFloat(pkg.price_per_plate) || 0,
+        price_per_plate: pkg.price_per_plate ? parseFloat(pkg.price_per_plate) : 0,
+        price_per_plate_without_material: pkg.price_per_plate_without_material ? parseFloat(pkg.price_per_plate_without_material) : null,
+        material_option: pkg.material_option || "with_material",
         min_plates: parseInt(pkg.min_plates) || 50
       }));
     }
@@ -1977,19 +2088,25 @@ function EditListingForm() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (₹)</label>
-                    <input
-                      type="number"
-                      value={pkg.price_per_plate}
-                      placeholder="e.g. 450"
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Material Option</label>
+                    <select
+                      value={pkg.material_option || "with_material"}
                       onChange={(e) => {
                         const list = [...detailForm.packages];
-                        list[idx].price_per_plate = parseFloat(e.target.value) || "";
+                        list[idx].material_option = e.target.value;
+                        if (e.target.value === "with_material") {
+                          list[idx].price_per_plate_without_material = "";
+                        } else if (e.target.value === "without_material") {
+                          list[idx].price_per_plate = "";
+                        }
                         handleDetailChange("packages", list);
                       }}
-                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none"
-                    />
-                    {formErrors[`details.packages.${idx}.price_per_plate`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate`]}</p>}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                    >
+                      <option value="with_material">With Material Only</option>
+                      <option value="without_material">Without Material Only</option>
+                      <option value="both">Both (With & Without Material)</option>
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">
@@ -2003,8 +2120,183 @@ function EditListingForm() {
                         list[idx].min_plates = parseInt(e.target.value) || 50;
                         handleDetailChange("packages", list);
                       }}
-                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none"
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
                     />
+                  </div>
+                </div>
+
+                {/* Conditional Prices Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(pkg.material_option === "with_material" || pkg.material_option === "both" || !pkg.material_option) && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (With Material) (₹)</label>
+                      <input
+                        type="number"
+                        value={pkg.price_per_plate}
+                        placeholder="e.g. 1200"
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].price_per_plate = parseFloat(e.target.value) || "";
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                      {formErrors[`details.packages.${idx}.price_per_plate`] && (
+                        <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate`]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {(pkg.material_option === "without_material" || pkg.material_option === "both") && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (Without Material) (₹)</label>
+                      <input
+                        type="number"
+                        value={pkg.price_per_plate_without_material ?? ""}
+                        placeholder="e.g. 600"
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].price_per_plate_without_material = parseFloat(e.target.value) || "";
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                      {formErrors[`details.packages.${idx}.price_per_plate_without_material`] && (
+                        <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate_without_material`]}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 border-t border-gray-100 pt-3">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">
+                    Configure Included Menu Items
+                  </label>
+                  
+                  {/* Active Selections List */}
+                  <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-xl bg-white min-h-[46px]">
+                    {(() => {
+                      const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                      if (selections.length === 0) {
+                        return <span className="text-xs text-gray-400 italic">No menu items configured yet. Choose a course and count below.</span>;
+                      }
+                      return selections.map((sel: any, sIdx: number) => (
+                        <span
+                          key={sIdx}
+                          className="inline-flex items-center gap-1.5 bg-gold/10 text-gold border border-gold/20 text-xs px-2.5 py-1 rounded-lg font-semibold"
+                        >
+                          <span>
+                            {sel.category === "Other" ? sel.customName : sel.category}
+                            {sel.count && sel.count > 0 ? ` (${sel.count})` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = selections.filter((_: any, i: number) => i !== sIdx);
+                              const list = [...detailForm.packages];
+                              list[idx] = {
+                                ...pkg,
+                                menu_selections: updated,
+                                description: formatSelectionsToDescription(updated)
+                              };
+                              handleDetailChange("packages", list);
+                            }}
+                            className="text-gray-400 hover:text-red-500 rounded-full transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ));
+                    })()}
+                  </div>
+
+                  {/* Selection Form */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-zinc-50/50 p-3 border border-gray-150 rounded-xl">
+                    <div className="sm:col-span-4 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Course Menu</label>
+                      <select
+                        id={`sel-course-${idx}`}
+                        defaultValue="Starters"
+                        onChange={(e) => {
+                          const otherEl = document.getElementById(`sel-other-div-${idx}`);
+                          if (otherEl) {
+                            if (e.target.value === "Other") {
+                              otherEl.classList.remove("hidden");
+                            } else {
+                              otherEl.classList.add("hidden");
+                            }
+                          }
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {COURSE_TYPES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div id={`sel-other-div-${idx}`} className="sm:col-span-4 space-y-1 hidden">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Custom Option Name</label>
+                      <input
+                        type="text"
+                        id={`sel-custom-name-${idx}`}
+                        placeholder="e.g. Mocktails, Ice Cream"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Count / Quantity</label>
+                      <select
+                        id={`sel-count-${idx}`}
+                        defaultValue="1"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        <option value="none">No Count (Optional)</option>
+                        {Array.from({ length: 15 }, (_, i) => i + 1).map((num) => (
+                          <option key={num} value={num}>{num}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const courseEl = document.getElementById(`sel-course-${idx}`) as HTMLSelectElement;
+                          const countEl = document.getElementById(`sel-count-${idx}`) as HTMLSelectElement;
+                          const customNameEl = document.getElementById(`sel-custom-name-${idx}`) as HTMLInputElement;
+
+                          const category = courseEl?.value || "Starters";
+                          const countVal = countEl?.value;
+                          const count = countVal === "none" ? undefined : parseInt(countVal, 10);
+                          const customName = category === "Other" ? (customNameEl?.value.trim() || "Other") : undefined;
+
+                          if (category === "Other" && !customName) return;
+
+                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                          const newSelection: MenuSelection = {
+                            category,
+                            customName,
+                            count
+                          };
+
+                          const updated = [...selections, newSelection];
+                          const list = [...detailForm.packages];
+                          list[idx] = {
+                            ...pkg,
+                            menu_selections: updated,
+                            description: formatSelectionsToDescription(updated)
+                          };
+                          handleDetailChange("packages", list);
+
+                          if (customNameEl) customNameEl.value = "";
+                        }}
+                        className="w-full btn-gold rounded-lg py-1.5 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm h-[32px]"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2280,6 +2572,8 @@ function EditListingForm() {
                     price_per_plate: "",
                     min_plates: 80,
                     description: "",
+                    material_option: "with_material",
+                    price_per_plate_without_material: "",
                     weekend_surcharge_pct: 0,
                     festival_surcharge_pct: 0,
                     course_sections: {
