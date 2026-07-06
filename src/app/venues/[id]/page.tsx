@@ -2,9 +2,15 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { useState, use } from "react";
-import { MapPin, Star, Users, Check, ArrowRight, IndianRupee, ShieldCheck } from "lucide-react";
+import { useState, use, useEffect, useRef } from "react";
+import { 
+  MapPin, Star, Users, Check, ArrowRight, IndianRupee, 
+  ShieldCheck, ShieldAlert, Lock, X, ChevronLeft, Zap, Calendar, User, Smartphone 
+} from "lucide-react";
 import Image from "next/image";
+import { useStore } from "@/store/store";
+import { api } from "@/lib/api";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 const MOCK_VENUE_DATA: Record<number, any> = {
   1: { id: 1, name: "Royal Gardens Bhopal", venue_type: "Wedding Garden", city: "Bhopal", state: "Madhya Pradesh", price_per_day: "85000.00", avg_rating: "4.8", total_bookings: 142, guests: 800, is_ac: false, has_parking: true, description: "A beautifully manicured open lawn located in the scenic Lalghati area of Bhopal. Perfect for grand Mehendi and Reception events, offering ample parking space and a stunning banquet structure for main ceremonies.", image: "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=800&q=80" },
@@ -12,15 +18,657 @@ const MOCK_VENUE_DATA: Record<number, any> = {
   3: { id: 3, name: "Shree Residency", venue_type: "Heritage Hotel", city: "Jaipur", state: "Rajasthan", price_per_day: "175000.00", avg_rating: "4.9", total_bookings: 213, guests: 300, is_ac: true, has_parking: true, description: "Immerse your guests in Royal Rajasthani heritage. Features hand-painted fresco ceilings, beautiful inner courtyard architecture, and custom local folk packages.", image: "https://images.unsplash.com/photo-1510076857177-7470076d4098?w=800&q=80" },
 };
 
+const VENUE_IMAGES = [
+  "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=800&q=80",
+  "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800&q=80",
+  "https://images.unsplash.com/photo-1510076857177-7470076d4098?w=800&q=80",
+];
+
+const INHOUSE_THEMES = [
+  { id: "standard", name: "Standard Theme", price: 0, tier: "low" },
+  { id: "royal", name: "Premium Royal Theme", price: 25000, tier: "average" },
+  { id: "floral", name: "Exotic Floral Theme", price: 40000, tier: "high" }
+];
+
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const venueId = Number(unwrappedParams.id);
-  const venue = MOCK_VENUE_DATA[venueId] || MOCK_VENUE_DATA[1];
+
+  // Fetch actual venue details from backend
+  const { data: dbVenue, isLoading: isVenueLoading } = useQuery({
+    queryKey: ["venueDetail", venueId],
+    queryFn: async () => {
+      const response = await api.get(`/venues/venues/${venueId}/`);
+      return response.data?.data || response.data;
+    },
+    retry: false,
+  });
+
+  const venue = dbVenue
+    ? {
+        ...dbVenue,
+        guests: dbVenue.max_capacity,
+        image: dbVenue.images?.[0]?.image || VENUE_IMAGES[venueId % VENUE_IMAGES.length],
+      }
+    : (MOCK_VENUE_DATA[venueId] || MOCK_VENUE_DATA[1]);
+  
+  // App store auth & fields
+  const storeToken = useStore((s) => s.token);
+  const storeRole = useStore((s) => s.userRole);
+  const setToken = useStore((s) => s.setToken);
+  const setUser = useStore((s) => s.setUser);
+  const setOnboardingField = useStore((s) => s.setOnboardingField);
+  const storeUser = useStore((s) => s.user);
+  const storeOnboardingPhone = useStore((s) => s.onboarding.phone);
+  const storeOnboardingGuests = useStore((s) => s.onboarding.guests);
+
+  // Component States
   const [success, setSuccess] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalStep, setModalStep] = useState<1 | 2>(1);
+  const [modalError, setModalError] = useState("");
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+
+  // Form Fields
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    guestCount: "",
+    eventDate: "",
+  });
+
+  // Calculator States
+  const [guests, setGuests] = useState<number>(150);
+  const [eventDate, setEventDate] = useState<string>("");
+  const [cateringSource, setCateringSource] = useState<"inhouse" | "external" | "none">("inhouse");
+  const [decorSource, setDecorSource] = useState<"inhouse" | "external" | "none">("inhouse");
+  const [selectedTheme, setSelectedTheme] = useState<string>("standard");
+
+  // Initialize independent source choices from venue policies once dbVenue is loaded
+  useEffect(() => {
+    if (dbVenue) {
+      if (dbVenue.catering_policy === "external") {
+        setCateringSource("external");
+      } else if (dbVenue.catering_policy === "none") {
+        setCateringSource("none");
+      } else {
+        setCateringSource("inhouse");
+      }
+
+      if (dbVenue.decoration_policy === "external") {
+        setDecorSource("external");
+      } else if (dbVenue.decoration_policy === "none") {
+        setDecorSource("none");
+      } else {
+        setDecorSource("inhouse");
+      }
+    }
+  }, [dbVenue]);
+
+  // External package customizer states
+  const [selectedCateringPkgId, setSelectedCateringPkgId] = useState<string>("");
+  const [selectedDecorPkgId, setSelectedDecorPkgId] = useState<string>("");
+  const [selectedDecorTier, setSelectedDecorTier] = useState<string>("average");
+  const [selectedFoodIds, setSelectedFoodIds] = useState<number[]>([]);
+
+  // Fetch pricing configs with parameters
+  const { data: pricingConfig, isLoading: isPricingLoading } = useQuery({
+    queryKey: [
+      "pricingConfig", 
+      venueId, 
+      isVerified, 
+      guests, 
+      cateringSource,
+      decorSource,
+      selectedCateringPkgId, 
+      selectedDecorPkgId, 
+      selectedDecorTier,
+      selectedTheme,
+      selectedFoodIds
+    ],
+    queryFn: async () => {
+      let decor_type = "inhouse";
+      if (cateringSource === "external" || decorSource === "external") {
+        decor_type = "external";
+      } else if (cateringSource === "none" && decorSource === "none") {
+        decor_type = "none";
+      }
+
+      const params: any = {
+        guest_count: guests,
+        decor_type: decor_type,
+      };
+
+      if (decor_type === "external") {
+        if (cateringSource === "external" && selectedCateringPkgId) {
+          params.catering_package_id = selectedCateringPkgId;
+        }
+        if (decorSource === "external" && selectedDecorPkgId) {
+          params.decoration_package_id = selectedDecorPkgId;
+          params.decoration_tier = selectedDecorTier;
+        }
+      } else if (decor_type === "inhouse") {
+        const themeTierMap: Record<string, string> = {
+          standard: "low",
+          royal: "average",
+          floral: "high",
+        };
+        params.decoration_tier = themeTierMap[selectedTheme] || "average";
+      }
+
+      const response = await api.get(`/venues/${venueId}/pricing-breakdown/`, { params }).catch((err) => {
+        console.warn("Using mock pricing-breakdown fallback", err);
+        const rentVal = Number(venue.price_per_day);
+        
+        // Calculate dynamic catering cost: base price + selected food item add-on prices
+        let basePlatePrice = 600;
+        let addonPricePerPlate = 0;
+        
+        if (cateringSource === "external" && selectedCateringPkgId && cateringPackages) {
+          const matchedPkg = cateringPackages.find((p: any) => String(p.id) === String(selectedCateringPkgId));
+          if (matchedPkg) {
+            basePlatePrice = Number(matchedPkg.price_per_plate) || 0;
+            if (matchedPkg.menu_items) {
+              matchedPkg.menu_items.forEach((item: any) => {
+                if (selectedFoodIds.includes(item.id)) {
+                  addonPricePerPlate += Number(item.addon_price) || 0;
+                }
+              });
+            }
+          }
+        }
+        
+        const cateringVal = cateringSource === "none" ? 0 : guests * (basePlatePrice + addonPricePerPlate);
+        let decorVal = 0;
+        if (decorSource === "inhouse") {
+          decorVal = selectedTheme === "royal" ? 50000 : selectedTheme === "floral" ? 65000 : 25000;
+        } else if (decorSource === "external") {
+          decorVal = 30000;
+        }
+        
+        const subtotalVal = rentVal + cateringVal + decorVal;
+        const royaltyVal = subtotalVal * 0.05;
+        const gstVal = (subtotalVal + royaltyVal) * 0.18;
+        const totalVal = subtotalVal + royaltyVal + gstVal;
+
+        return {
+          data: {
+            venue_rent: rentVal,
+            catering_total: cateringVal,
+            decor_total: decorVal,
+            royalty: royaltyVal,
+            gst: gstVal,
+            total: totalVal,
+          }
+        };
+      });
+      return response.data?.data || response.data;
+    },
+    enabled: isVerified,
+  });
+
+  // Fetch available external catering packages
+  const { data: cateringPackages } = useQuery({
+    queryKey: ["cateringPackages", venueId, eventDate],
+    queryFn: async () => {
+      const response = await api.get(`/catering/catering-packages/available/`, {
+        params: { venue_id: venueId, date: eventDate || undefined }
+      }).catch((err) => {
+        console.warn("Using mock cateringPackages fallback", err);
+        return {
+          data: [
+            {
+              id: 301,
+              name: "Silver Platter Deal",
+              cuisine_type: "multi",
+              tier: "medium",
+              price_per_plate: 350,
+              min_plates: 80,
+              description: "Include standard 3 starters, 4 mains, 1 dessert",
+              weekend_surcharge_pct: 10,
+              festival_surcharge_pct: 15,
+              course_sections: {
+                starter: { min: 1, max: 3 },
+                main: { min: 2, max: 4 },
+                dessert: { min: 1, max: 1 },
+                welcome: { min: 1, max: 2 },
+              },
+              menu_items: [
+                { id: 11, name: "Spring Rolls", course: "starter", addon_price: 20 },
+                { id: 12, name: "Paneer Tikka", course: "starter", addon_price: 30 },
+                { id: 13, name: "Veg Manchurian", course: "starter", addon_price: 0 },
+                { id: 14, name: "Paneer Butter Masala", course: "main", addon_price: 0 },
+                { id: 15, name: "Mix Veg", course: "main", addon_price: 0 },
+                { id: 16, name: "Dal Fry", course: "main", addon_price: 0 },
+                { id: 17, name: "Jeera Rice", course: "main", addon_price: 0 },
+                { id: 18, name: "Gulab Jamun", course: "dessert", addon_price: 0 },
+                { id: 19, name: "Mint Mojito", course: "welcome", addon_price: 15 },
+              ]
+            },
+            {
+              id: 302,
+              name: "Gold Royal Banquet",
+              cuisine_type: "multi",
+              tier: "high",
+              price_per_plate: 550,
+              min_plates: 100,
+              description: "Include premium 4 starters, 5 mains, 2 desserts",
+              weekend_surcharge_pct: 12,
+              festival_surcharge_pct: 18,
+              course_sections: {
+                starter: { min: 2, max: 4 },
+                main: { min: 3, max: 5 },
+                dessert: { min: 1, max: 2 },
+                welcome: { min: 1, max: 2 },
+              },
+              menu_items: [
+                { id: 21, name: "Cheese Balls", course: "starter", addon_price: 30 },
+                { id: 22, name: "Hara Bhara Kabab", course: "starter", addon_price: 0 },
+                { id: 23, name: "Paneer Pasanda", course: "main", addon_price: 40 },
+                { id: 24, name: "Kadhai Paneer", course: "main", addon_price: 0 },
+                { id: 25, name: "Kashmiri Dum Aloo", course: "main", addon_price: 0 },
+                { id: 26, name: "Moong Dal Halwa", course: "dessert", addon_price: 0 },
+                { id: 27, name: "Rasmalai", course: "dessert", addon_price: 40 },
+              ]
+            }
+          ]
+        };
+      });
+      return response.data?.data || response.data;
+    },
+    enabled: isVerified,
+  });
+
+  // Fetch available external decoration packages
+  const { data: decorationPackages } = useQuery({
+    queryKey: ["decorationPackages", venueId, eventDate],
+    queryFn: async () => {
+      const response = await api.get(`/decorations/decoration-packages/available/`, {
+        params: { venue_id: venueId, date: eventDate || undefined }
+      });
+      return response.data;
+    },
+    enabled: isVerified && decorSource === "external",
+  });
+
+  // Auto-select first catering package when loaded
+  useEffect(() => {
+    if (cateringPackages && cateringPackages.length > 0 && !selectedCateringPkgId) {
+      setSelectedCateringPkgId(String(cateringPackages[0].id));
+    }
+  }, [cateringPackages, selectedCateringPkgId]);
+
+  // Auto-select first decoration package when loaded
+  useEffect(() => {
+    if (decorationPackages && decorationPackages.length > 0 && !selectedDecorPkgId) {
+      setSelectedDecorPkgId(String(decorationPackages[0].id));
+    }
+  }, [decorationPackages, selectedDecorPkgId]);
+
+  // Sync selectedDecorTier with available tiers when package changes
+  useEffect(() => {
+    if (decorationPackages && selectedDecorPkgId) {
+      const selectedPkg = decorationPackages.find(
+        (pkg: any) => String(pkg.id) === String(selectedDecorPkgId)
+      );
+      if (selectedPkg && selectedPkg.tiers && selectedPkg.tiers.length > 0) {
+        const hasCurrentTier = selectedPkg.tiers.some(
+          (t: any) => String(t.tier) === String(selectedDecorTier)
+        );
+        if (!hasCurrentTier) {
+          setSelectedDecorTier(selectedPkg.tiers[0].tier);
+        }
+      }
+    }
+  }, [selectedDecorPkgId, decorationPackages, selectedDecorTier]);
+
+  // Sync state from Zustand and form when verification completes
+  useEffect(() => {
+    if (isVerified) {
+      if (storeOnboardingGuests) {
+        setGuests(storeOnboardingGuests);
+      } else if (formData.guestCount) {
+        setGuests(Number(formData.guestCount));
+      }
+      
+      if (formData.eventDate) {
+        setEventDate(formData.eventDate);
+      }
+    }
+  }, [isVerified, storeOnboardingGuests, formData.guestCount, formData.eventDate]);
+
+  // OTP Digits Input
+  const [otpDigits, setOtpDigits] = useState(["", "", "", ""]);
+  const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Sync isVerified on Mount / Updates
+  useEffect(() => {
+    const getCookie = (name: string) => {
+      if (typeof window === "undefined") return null;
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
+      return null;
+    };
+    const cookieToken = getCookie("access_token");
+    setIsVerified(!!(storeToken || cookieToken));
+  }, [storeToken, storeRole]);
+
+  // Mutations
+  const sendOtpMutation = useMutation({
+    mutationFn: async (payload: { phone: string }) => {
+      const response = await api.post("/auth/otp/send/", payload).catch((err) => {
+        if (err.response) throw err;
+        console.warn("Using mock send-otp fallback", err);
+        return { data: { status: "success", message: "Mock OTP sent successfully.", dev_otp: "1234" } };
+      });
+      return response.data;
+    }
+  });
+
+  const verifyOtpMutation = useMutation({
+    mutationFn: async (payload: { phone: string; otp: string }) => {
+      const response = await api.post("/auth/otp/verify/", {
+        phone: payload.phone,
+        otp_code: payload.otp
+      }).catch((err) => {
+        if (err.response) throw err;
+        console.warn("Using mock verify-otp fallback", err);
+        return {
+          data: {
+            status: "success",
+            data: {
+              access: "mock_client_access_token",
+              refresh: "mock_client_refresh_token",
+              user: {
+                id: 999,
+                phone: payload.phone,
+                role: "customer",
+                is_verified: true,
+                full_name: formData.name || "Mock Customer"
+              }
+            }
+          }
+        };
+      });
+      return response.data;
+    }
+  });
+
+  const submitInquiryMutation = useMutation({
+    mutationFn: async (payload: {
+      name: string;
+      phone: string;
+      guest_count: number;
+      event_date: string;
+      venue: number;
+      catering_package?: number | null;
+      decoration_package?: number | null;
+      message: string;
+    }) => {
+      const response = await api.post("/bookings/inquiries/", payload).catch((err) => {
+        if (err.response) throw err;
+        console.warn("Using mock inquiry creation fallback", err);
+        return { data: { status: "success", message: "Mock Inquiry created successfully." } };
+      });
+      return response.data;
+    }
+  });
+
+  const calculatePricing = (pkgGuests: number, pkgDecorType: "inhouse" | "external" | "none", pkgThemeId: string) => {
+    const rent = Number(venue.price_per_day);
+    let catering = 0;
+    let decor = 0;
+    
+    if (pkgDecorType !== "none") {
+      catering = pkgGuests * 600;
+      if (pkgDecorType === "inhouse") {
+        const themeObj = INHOUSE_THEMES.find((t: any) => t.id === pkgThemeId);
+        const themePrice = themeObj ? themeObj.price : 0;
+        decor = 25000 + themePrice;
+      } else {
+        decor = 30000;
+      }
+    }
+    
+    const subtotal = rent + catering + decor;
+    const royalty = subtotal * 0.05;
+    const gst = (subtotal + royalty) * 0.18;
+    const total = subtotal + royalty + gst;
+    
+    return { rent, catering, decor, subtotal, royalty, gst, total };
+  };
+
+  const currentDetails = pricingConfig ? {
+    rent: pricingConfig.venue_rent,
+    catering: pricingConfig.catering_total,
+    decor: pricingConfig.decor_total,
+    royalty: pricingConfig.royalty || 0,
+    subtotal: pricingConfig.venue_rent + pricingConfig.catering_total + pricingConfig.decor_total,
+    gst: pricingConfig.gst,
+    total: pricingConfig.total
+  } : {
+    rent: Number(venue.price_per_day),
+    catering: 0,
+    decor: 0,
+    royalty: 0,
+    subtotal: Number(venue.price_per_day),
+    gst: 0,
+    total: Number(venue.price_per_day)
+  };
+
+  const pkg1 = calculatePricing(guests, "none", "standard");
+  const pkg2 = calculatePricing(guests, "inhouse", selectedTheme);
+  const pkg3 = calculatePricing(guests, "external", "standard");
 
   const handleBook = () => {
-    setSuccess(true);
+    // If verified, proceed directly
+    if (isVerified) {
+      if (!eventDate) {
+        alert("Please select an event date before booking.");
+        return;
+      }
+
+      const clientName = storeUser?.full_name || formData.name || "Customer";
+      const clientPhone = storeUser?.phone || storeOnboardingPhone || `+91${formData.phone.replace(/\D/g, "")}`;
+
+      // If caterer package selected, submit catering booking request
+      if (cateringSource === "external" && selectedCateringPkgId) {
+        api.post("/catering/catering-bookings/", {
+          venue: venueId,
+          catering_package: Number(selectedCateringPkgId),
+          customer_name: clientName,
+          customer_phone: clientPhone,
+          event_date: eventDate,
+          guest_count: Number(guests),
+          selected_items: selectedFoodIds
+        }).then((res) => {
+          console.log("Catering custom booking inquiry created successfully:", res.data);
+        }).catch((err) => {
+          const errMsg = err.response?.data?.error || "Caterer booking request failed.";
+          alert(errMsg);
+        });
+      }
+
+      submitInquiryMutation.mutate(
+        {
+          name: clientName,
+          phone: clientPhone,
+          guest_count: Number(guests),
+          event_date: eventDate,
+          venue: venueId,
+          catering_package: cateringSource === "external" && selectedCateringPkgId ? Number(selectedCateringPkgId) : null,
+          decoration_package: decorSource === "external" && selectedDecorPkgId ? Number(selectedDecorPkgId) : null,
+          message: `Site visit request for ${venue.name}. Details: Guest Count = ${guests}, Catering Choice = ${cateringSource} (Package = ${selectedCateringPkgId || "inhouse"}), Decor Choice = ${decorSource} (Package = ${selectedDecorPkgId || "inhouse"}).`,
+        },
+        {
+          onSuccess: () => {
+            setSuccess(true);
+          }
+        }
+      );
+    } else {
+      setIsModalOpen(true);
+    }
   };
+
+  // OTP handlers
+  const handleOtpChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const newDigits = [...otpDigits];
+    newDigits[index] = digit;
+    setOtpDigits(newDigits);
+
+    if (digit && index < 3) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace") {
+      if (!otpDigits[index] && index > 0) {
+        const newDigits = [...otpDigits];
+        newDigits[index - 1] = "";
+        setOtpDigits(newDigits);
+        otpInputsRef.current[index - 1]?.focus();
+      } else {
+        const newDigits = [...otpDigits];
+        newDigits[index] = "";
+        setOtpDigits(newDigits);
+      }
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (pastedData.length > 0) {
+      const newDigits = [...otpDigits];
+      for (let i = 0; i < 4; i++) {
+        newDigits[i] = pastedData[i] || "";
+      }
+      setOtpDigits(newDigits);
+      const focusIndex = Math.min(pastedData.length, 3);
+      otpInputsRef.current[focusIndex]?.focus();
+    }
+  };
+
+  const handleStep1Submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      setModalError("Please enter your name.");
+      return;
+    }
+    const cleanPhone = formData.phone.replace(/\D/g, "");
+    if (cleanPhone.length !== 10) {
+      setModalError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    if (!formData.guestCount || Number(formData.guestCount) <= 0) {
+      setModalError("Please enter a valid guest count.");
+      return;
+    }
+    if (!formData.eventDate) {
+      setModalError("Please select your event date.");
+      return;
+    }
+
+    setModalError("");
+    const e164Phone = `+91${cleanPhone}`;
+
+    sendOtpMutation.mutate(
+      { phone: e164Phone },
+      {
+        onSuccess: (data) => {
+          const resData = data?.data || data;
+          if (resData?.dev_otp) {
+            setDevOtpHint(resData.dev_otp);
+          } else if (data?.dev_otp) {
+            setDevOtpHint(data.dev_otp);
+          } else {
+            setDevOtpHint(null);
+          }
+          setModalStep(2);
+        },
+        onError: (err) => {
+          setModalError("Failed to send verification code. Please try again.");
+          console.error(err);
+        }
+      }
+    );
+  };
+
+  const handleStep2Submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const otp = otpDigits.join("");
+    if (otp.length !== 4) {
+      setModalError("Please enter the 4-digit code.");
+      return;
+    }
+
+    setModalError("");
+    const cleanPhone = formData.phone.replace(/\D/g, "");
+    const e164Phone = `+91${cleanPhone}`;
+
+    verifyOtpMutation.mutate(
+      { phone: e164Phone, otp },
+      {
+        onSuccess: (data) => {
+          const authData = data?.data || data;
+          const token = authData?.access || "mock_client_access_token";
+
+          // Save token in cookies and store
+          document.cookie = `access_token=${token}; path=/; max-age=86400`;
+          document.cookie = `user_role=customer; path=/; max-age=86400`;
+
+          setToken(token, "customer");
+          if (authData?.user) {
+            setUser(authData.user);
+          }
+
+          setOnboardingField("phone", e164Phone);
+          setOnboardingField("otpVerified", true);
+          setOnboardingField("guests", Number(formData.guestCount));
+
+          // Submit the inquiry lead
+          submitInquiryMutation.mutate(
+            {
+              name: formData.name,
+              phone: e164Phone,
+              guest_count: Number(formData.guestCount),
+              event_date: formData.eventDate,
+              venue: venueId,
+              message: `Unlock Quote Inquiry for ${venue.name}. Event Date: ${formData.eventDate}, Guests: ${formData.guestCount}.`,
+            },
+            {
+              onSuccess: () => {
+                setIsModalOpen(false);
+              },
+              onError: (inqErr) => {
+                console.error("Failed to submit inquiry lead", inqErr);
+                setIsModalOpen(false);
+              }
+            }
+          );
+        },
+        onError: (err) => {
+          setModalError("Incorrect verification code. Please check and try again.");
+          console.error(err);
+        }
+      }
+    );
+  };
+
+  if (isVenueLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-[#f5f3ef]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+      </div>
+    );
+  }
+
+  const isMutating = sendOtpMutation.isPending || verifyOtpMutation.isPending || submitInquiryMutation.isPending;
 
   return (
     <>
@@ -104,34 +752,289 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   </h2>
                 </div>
 
-                <div className="space-y-3 bg-zinc-50 p-4 rounded-xl text-xs text-gray-600">
-                  <div className="flex justify-between">
-                    <span>Base Fare</span>
-                    <span>₹{Number(venue.price_per_day).toLocaleString("en-IN")}</span>
+                {/* Pricing Breakdown with Blur Lock Overlay */}
+                {isVerified ? (
+                  /* Verified View: Interactive Calculator inputs & dynamic breakdown */
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Guests Count</label>
+                        <input
+                          type="number"
+                          min={10}
+                          value={guests}
+                          onChange={(e) => setGuests(Number(e.target.value))}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Event Date</label>
+                        <input
+                          type="date"
+                          value={eventDate}
+                          onChange={(e) => setEventDate(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white [color-scheme:light]"
+                        />
+                      </div>
+
+                      {/* Catering Provider Choice */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Catering Provider</label>
+                          {venue.catering_policy === "inhouse" && (
+                            <span className="text-[9px] text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-250/20">In-house Mandatory</span>
+                          )}
+                          {venue.catering_policy === "external" && (
+                            <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/50">External Only</span>
+                          )}
+                          {venue.catering_policy === "none" && (
+                            <span className="text-[9px] text-gray-500 font-semibold bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">Not Allowed</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 bg-gray-50 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            disabled={venue.catering_policy === "external" || venue.catering_policy === "none"}
+                            onClick={() => setCateringSource("inhouse")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${cateringSource === "inhouse" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            In-house
+                          </button>
+                          <button
+                            type="button"
+                            disabled={venue.catering_policy === "inhouse" || venue.catering_policy === "none"}
+                            onClick={() => setCateringSource("external")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${cateringSource === "external" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            External Caterer
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* External Catering Package Selector */}
+                      {cateringSource === "external" && (
+                        <div className="space-y-1 mt-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Select External Caterer</label>
+                          <select
+                            value={selectedCateringPkgId}
+                            onChange={(e) => setSelectedCateringPkgId(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                          >
+                            <option value="">-- Select Caterer --</option>
+                            {cateringPackages?.map((pkg: any) => (
+                              <option key={pkg.id} value={pkg.id}>
+                                {pkg.vendor_name || "External Caterer"} - {pkg.name} (₹{Number(pkg.price_per_plate).toLocaleString("en-IN")}/plate)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Decoration Choice */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Decoration Provider</label>
+                          {venue.decoration_policy === "inhouse" && (
+                            <span className="text-[9px] text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-250/20">In-house Mandatory</span>
+                          )}
+                          {venue.decoration_policy === "external" && (
+                            <span className="text-[9px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/50">External Only</span>
+                          )}
+                          {venue.decoration_policy === "none" && (
+                            <span className="text-[9px] text-gray-500 font-semibold bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">Not Allowed</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 bg-gray-50 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            disabled={venue.decoration_policy === "external" || venue.decoration_policy === "none"}
+                            onClick={() => setDecorSource("inhouse")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${decorSource === "inhouse" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            In-house
+                          </button>
+                          <button
+                            type="button"
+                            disabled={venue.decoration_policy === "inhouse" || venue.decoration_policy === "none"}
+                            onClick={() => setDecorSource("external")}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${decorSource === "external" ? "bg-white text-gray-950 shadow-xs" : "text-gray-500 hover:text-gray-950"}`}
+                          >
+                            External Decorator
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* In-house Decor Theme Upgrade */}
+                      {decorSource === "inhouse" && (
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Decor Theme Upgrade</label>
+                          <select
+                            value={selectedTheme}
+                            onChange={(e) => setSelectedTheme(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                          >
+                            {INHOUSE_THEMES.map((theme: any) => (
+                              <option key={theme.id} value={theme.id}>
+                                {theme.name} (+₹{theme.price.toLocaleString("en-IN")})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* External Decor Package Selectors */}
+                      {decorSource === "external" && (
+                        <div className="space-y-3 font-body">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Select External Decorator</label>
+                            <select
+                              value={selectedDecorPkgId}
+                              onChange={(e) => setSelectedDecorPkgId(e.target.value)}
+                              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                            >
+                              <option value="">-- Select Decorator --</option>
+                              {decorationPackages?.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.vendor_name || "External Decorator"} - {pkg.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {selectedDecorPkgId && (
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">Decoration Tier</label>
+                              <select
+                                value={selectedDecorTier}
+                                onChange={(e) => setSelectedDecorTier(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white"
+                              >
+                                {decorationPackages
+                                  ?.find((pkg: any) => String(pkg.id) === String(selectedDecorPkgId))
+                                  ?.tiers?.map((tier: any) => (
+                                    <option key={tier.id} value={tier.tier}>
+                                      {tier.tier.toUpperCase()} (₹{Number(tier.price).toLocaleString("en-IN")})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 bg-zinc-50 p-4 rounded-xl text-xs text-gray-600">
+                      <div className="flex justify-between">
+                        <span>Base Rent</span>
+                        <span>₹{currentDetails.rent.toLocaleString("en-IN")}</span>
+                      </div>
+                      {cateringSource !== "none" && (
+                        <div className="flex justify-between">
+                          <span>Catering ({guests} guests - {cateringSource === "external" ? "External" : "In-house"})</span>
+                          <span>₹{currentDetails.catering.toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
+                      {decorSource !== "none" && (
+                        <>
+                          {decorSource === "inhouse" ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span>In-house Decor (Base Cost)</span>
+                                <span>
+                                  ₹{Math.max(0, currentDetails.decor - (selectedTheme === "royal" ? 25000 : selectedTheme === "floral" ? 40000 : 0)).toLocaleString("en-IN")}
+                                </span>
+                              </div>
+                              {selectedTheme !== "standard" && (
+                                <div className="flex justify-between text-gray-500">
+                                  <span>Theme: {INHOUSE_THEMES.find((t: any) => t.id === selectedTheme)?.name || selectedTheme}</span>
+                                  <span>
+                                    ₹{(selectedTheme === "royal" ? 25000 : selectedTheme === "floral" ? 40000 : 0).toLocaleString("en-IN")}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex justify-between">
+                              <span>External Decorator Fee</span>
+                              <span>₹{currentDetails.decor.toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
+                        <span>Subtotal</span>
+                        <span>₹{currentDetails.subtotal.toLocaleString("en-IN")}</span>
+                      </div>
+                      {currentDetails.royalty > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Platform Service Fee (5%)</span>
+                          <span>₹{currentDetails.royalty.toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-[11px] text-gray-500">
+                        <span>GST (18%)</span>
+                        <span>₹{currentDetails.gst.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-[14px] text-amber-600">
+                        <span>Total Quote</span>
+                        <span>₹{currentDetails.total.toLocaleString("en-IN")}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Catering & Stage Setups</span>
-                    <span className="text-amber-600 font-medium">Add-on service option</span>
+                ) : (
+                  /* Gated view (fallback if isVerified false) */
+                  <div className="relative overflow-hidden rounded-xl border border-gray-100">
+                    <div className="space-y-3 bg-zinc-50 p-4 text-xs text-gray-600 blur-[5px] select-none pointer-events-none">
+                      <div className="flex justify-between">
+                        <span>Base Fare</span>
+                        <span>₹{Number(venue.price_per_day).toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Catering & Stage Setups</span>
+                        <span className="text-amber-600 font-medium">Add-on service option</span>
+                      </div>
+                      <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
+                        <span>Estimate Total</span>
+                        <span>₹{Number(venue.price_per_day).toLocaleString("en-IN")}</span>
+                      </div>
+                    </div>
+
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[1px] p-4 text-center z-10">
+                      <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center mb-1.5 border border-amber-500/20 shadow-sm">
+                        <Lock size={14} className="animate-pulse" />
+                      </div>
+                      <p className="text-xs font-bold text-gray-950 mb-0.5">Pricing Locked</p>
+                      <p className="text-[10px] text-gray-500 max-w-[180px] mb-2 leading-tight">Verify phone to unlock full pricing breakdown.</p>
+                      <button
+                        type="button"
+                        onClick={() => setIsModalOpen(true)}
+                        className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm cursor-pointer"
+                      >
+                        Unlock Quote
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-gray-900">
-                    <span>Estimate Total</span>
-                    <span>₹{Number(venue.price_per_day).toLocaleString("en-IN")}</span>
-                  </div>
-                </div>
+                )}
 
                 {success ? (
                   <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-xs space-y-2">
                     <div className="flex items-center gap-1.5 font-bold">
-                      <ShieldCheck size={16} /> Booking Request Received
+                      <ShieldCheck size={16} /> Site Visit Request Received!
                     </div>
-                    <p>Our backend team will verify slots with the venue partner and text your mobile shortly.</p>
+                    <p>Our backend team has tentative availability for {eventDate || "your wedding date"} and will text your mobile shortly to coordinate details.</p>
                   </div>
                 ) : (
                   <button 
                     onClick={handleBook}
-                    className="w-full btn-gold py-3 text-sm justify-center rounded-xl"
+                    disabled={isVerified && isMutating}
+                    className="w-full btn-gold py-3 text-sm justify-center rounded-xl cursor-pointer disabled:opacity-50"
                   >
-                    Check Availability & Book <ArrowRight size={15} />
+                    {isVerified ? (
+                      isMutating ? "Submitting Request..." : "Request Site Visit"
+                    ) : (
+                      "Unlock Pricing to Book"
+                    )} <ArrowRight size={15} />
                   </button>
                 )}
 
@@ -143,9 +1046,450 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
           </div>
 
+          {/* Phase 6: Matrix comparison and interactive item selection */}
+          {isVerified && cateringPackages && cateringPackages.length > 0 && (
+            <div className="mt-12 bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+              <div>
+                <h3 className="font-heading font-semibold text-2xl text-gray-900">Interactive Menu & Package Customizer</h3>
+                <p className="text-sm text-gray-500">Compare catering plans side-by-side, check dishes to customize your platter, and watch the quote update live.</p>
+              </div>
+
+              {/* Package Comparison Grid Table */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {cateringPackages.map((pkg: any) => {
+                  const isSelected = String(pkg.id) === String(selectedCateringPkgId);
+                  
+                  // Compute dynamic package quote (live update)
+                  let basePrice = Number(pkg.price_per_plate) || 0;
+                  let selectedAddonTotal = 0;
+                  const matchedItems = pkg.menu_items?.filter((it: any) => selectedFoodIds.includes(it.id)) || [];
+                  matchedItems.forEach((it: any) => {
+                    selectedAddonTotal += Number(it.addon_price) || 0;
+                  });
+
+                  const plateRate = basePrice + selectedAddonTotal;
+                  const rawSubtotal = plateRate * guests;
+                  
+                  // Weekend/festival surcharges
+                  // simple check: if date string contains Friday/Sat/Sun or manually set
+                  const isWeekend = eventDate ? [0, 5, 6].includes(new Date(eventDate).getDay()) : false; // Sun=0, Fri=5, Sat=6
+                  const weekendSurcharge = isWeekend ? (rawSubtotal * (Number(pkg.weekend_surcharge_pct) || 0) / 100) : 0;
+                  
+                  const subtotal = rawSubtotal + weekendSurcharge;
+                  const royalty = subtotal * 0.05;
+                  const gst = (subtotal + royalty) * 0.18;
+                  const grandTotal = subtotal + royalty + gst;
+
+                  return (
+                    <div 
+                      key={pkg.id} 
+                      className={`rounded-2xl p-5 border transition-all flex flex-col justify-between space-y-5 ${
+                        isSelected 
+                          ? "border-amber-500 bg-amber-500/[0.01] ring-1 ring-amber-500/20 shadow-md" 
+                          : "border-gray-150 bg-zinc-50/30 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                              {pkg.tier?.toUpperCase() || "STANDARD"}
+                            </span>
+                            <h4 className="font-semibold text-lg text-gray-900 mt-1">{pkg.name}</h4>
+                          </div>
+                          {isSelected && (
+                            <span className="text-xs font-bold text-amber-600 flex items-center gap-0.5">
+                              <Check size={14} /> Active
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-gray-500 line-clamp-2">{pkg.description}</p>
+                        
+                        <div className="border-t border-dashed border-gray-200 pt-3 space-y-2 text-xs text-gray-600">
+                          <div className="flex justify-between">
+                            <span>Base Plate Price</span>
+                            <span className="font-semibold text-gray-900">₹{basePrice}/plate</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Selected Add-ons</span>
+                            <span className="font-semibold text-gray-900">₹{selectedAddonTotal}/plate</span>
+                          </div>
+                          <div className="flex justify-between border-t border-gray-150 pt-2 font-bold text-gray-900">
+                            <span>Final Plate Rate</span>
+                            <span className="text-amber-600">₹{plateRate}/plate</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 pt-3 border-t border-gray-100">
+                        <div className="text-xs text-gray-500 space-y-1 bg-zinc-50 p-2.5 rounded-lg">
+                          <div className="flex justify-between">
+                            <span>Food subtotal</span>
+                            <span>₹{rawSubtotal.toLocaleString("en-IN")}</span>
+                          </div>
+                          {weekendSurcharge > 0 && (
+                            <div className="flex justify-between text-amber-700 font-medium">
+                              <span>Weekend Surcharge ({pkg.weekend_surcharge_pct}%)</span>
+                              <span>₹{weekendSurcharge.toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-[10px]">
+                            <span>Royalty (5%) & GST (18%)</span>
+                            <span>₹{Math.round(royalty + gst).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-gray-200 pt-1.5 font-bold text-gray-900 text-sm">
+                            <span>Total Quote</span>
+                            <span>₹{Math.round(grandTotal).toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCateringPkgId(String(pkg.id));
+                            // reset custom item selections for new package
+                            setSelectedFoodIds([]);
+                          }}
+                          className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${
+                            isSelected 
+                              ? "bg-amber-500 text-white cursor-default" 
+                              : "border border-amber-500/30 text-amber-600 hover:bg-amber-50"
+                          }`}
+                        >
+                          {isSelected ? "Selected Caterer Plan" : "Choose this Plan"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Interactive Food Checkboxes Selector */}
+              {(() => {
+                const activePkg = cateringPackages.find((p: any) => String(p.id) === String(selectedCateringPkgId));
+                if (!activePkg || !activePkg.menu_items || activePkg.menu_items.length === 0) return null;
+
+                // Group items by course
+                const grouped: Record<string, any[]> = {};
+                activePkg.menu_items.forEach((item: any) => {
+                  if (!grouped[item.course]) grouped[item.course] = [];
+                  grouped[item.course].push(item);
+                });
+
+                return (
+                  <div className="border-t border-gray-150 pt-6 space-y-4">
+                    <div>
+                      <h4 className="font-heading font-semibold text-lg text-gray-900">Customise Your Platter Menu</h4>
+                      <p className="text-xs text-gray-400">Select dishes from the catalog. Premium options list surcharge add-on rates that update your plate total live.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.entries(grouped).map(([courseName, items]) => {
+                        const limit = activePkg.course_sections?.[courseName] || { min: 1, max: 4 };
+                        const courseCheckedCount = items.filter((it) => selectedFoodIds.includes(it.id)).length;
+                        const isOverLimit = courseCheckedCount > limit.max;
+
+                        return (
+                          <div key={courseName} className="bg-zinc-50/50 p-5 rounded-2xl border border-gray-150 space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="font-heading font-semibold text-sm capitalize text-gray-900">
+                                {(() => {
+                                  const nameMap: Record<string, string> = {
+                                    starter: "Starters",
+                                    main: "Main Course",
+                                    seasonal_veg: "Seasonal Veg",
+                                    paneer_dish: "Paneer Dishes",
+                                    breads: "Bread Varieties",
+                                    dessert: "Desserts",
+                                    welcome: "Welcome Drinks",
+                                    live: "Live Counters",
+                                    other: "Others"
+                                  };
+                                  return nameMap[courseName] || courseName;
+                                })()}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                isOverLimit 
+                                  ? "bg-red-50 text-red-600 border border-red-200" 
+                                  : "bg-gold/10 text-gold"
+                              }`}>
+                                Selected: {courseCheckedCount} / Max {limit.max}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {items.map((item: any) => {
+                                const checked = selectedFoodIds.includes(item.id);
+                                return (
+                                  <label 
+                                    key={item.id}
+                                    className={`p-3 rounded-xl border text-xs flex justify-between items-start gap-2.5 cursor-pointer transition-all ${
+                                      checked 
+                                        ? "bg-white border-amber-500 font-medium" 
+                                        : "bg-white/80 border-gray-200 hover:border-gray-300"
+                                    }`}
+                                  >
+                                    <div className="flex gap-2">
+                                      <input 
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          if (checked) {
+                                            setSelectedFoodIds(selectedFoodIds.filter(id => id !== item.id));
+                                          } else {
+                                            // FIFO auto-replacement logic
+                                            const currentlySelectedInCourse = items.filter(it => selectedFoodIds.includes(it.id));
+                                            if (currentlySelectedInCourse.length >= limit.max) {
+                                              // Remove the oldest selected item in this course
+                                              const oldestItem = currentlySelectedInCourse[0];
+                                              if (oldestItem) {
+                                                setSelectedFoodIds([
+                                                  ...selectedFoodIds.filter(id => id !== oldestItem.id),
+                                                  item.id
+                                                ]);
+                                                return;
+                                              }
+                                            }
+                                            setSelectedFoodIds([...selectedFoodIds, item.id]);
+                                          }
+                                        }}
+                                        className="mt-0.5 accent-gold"
+                                      />
+                                      <div>
+                                        <span className="text-gray-800 block leading-tight">{item.name}</span>
+                                        {item.description && (
+                                          <span className="text-[9px] text-gray-400 block mt-0.5 italic">{item.description}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {Number(item.addon_price) > 0 && (
+                                      <span className="text-[10px] font-bold text-amber-600 shrink-0">
+                                        +₹{item.addon_price}
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+            </div>
+          )}
+
         </div>
       </main>
       <Footer />
+
+      {/* ─── "Unlock Quote" Modal ─── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in font-body">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-gray-100 shadow-2xl relative overflow-hidden transition-all transform scale-100">
+            {/* Top Accent Bar */}
+            <div className="h-1.5 bg-amber-500 w-full" />
+
+            {/* Close Button */}
+            <button
+              onClick={() => {
+                setIsModalOpen(false);
+                setModalError("");
+                setModalStep(1);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-zinc-100 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="p-6 md:p-8 space-y-6">
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+                  <Lock size={18} />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-heading font-semibold text-gray-900">Unlock Detailed Quote</h2>
+                <p className="text-xs text-gray-500">
+                  {modalStep === 1
+                    ? "Enter your details to view customized catering, decor & venue rentals."
+                    : `We sent a 4-digit verification code to +91 ${formData.phone}`}
+                </p>
+              </div>
+
+              {/* Progress Steps */}
+              <div className="flex items-center justify-center gap-2 max-w-[200px] mx-auto">
+                <div className={`h-1.5 rounded-full transition-all duration-300 ${modalStep === 1 ? "bg-amber-500 flex-1" : "bg-emerald-500 w-8"}`} />
+                <div className={`h-1.5 rounded-full transition-all duration-300 ${modalStep === 2 ? "bg-amber-500 flex-1" : "bg-gray-200 w-8"}`} />
+              </div>
+
+              {modalError && (
+                <div className="bg-red-50 border border-red-200/50 text-red-700 px-4 py-3 rounded-xl text-xs flex items-center gap-2">
+                  <ShieldAlert size={14} className="flex-shrink-0" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
+              {/* Dev Mode OTP Banner */}
+              {modalStep === 2 && devOtpHint && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-700">
+                    <Zap size={13} className="text-amber-500" />
+                    <p className="text-[10px] font-bold uppercase tracking-wider">Dev Mode OTP Code</p>
+                  </div>
+                  <p className="text-xl font-mono font-bold text-center tracking-[0.4em] text-gray-900">{devOtpHint}</p>
+                </div>
+              )}
+
+              {/* STEP 1: Details Form */}
+              {modalStep === 1 ? (
+                <form onSubmit={handleStep1Submit} className="space-y-4" noValidate>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Your Name</label>
+                    <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl focus-within:border-amber-500 focus-within:bg-white transition-all duration-200">
+                      <span className="absolute left-3.5 text-gray-400"><User size={14} /></span>
+                      <input
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="John Doe"
+                        className="w-full bg-transparent pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Mobile Number</label>
+                    <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl focus-within:border-amber-500 focus-within:bg-white transition-all duration-200">
+                      <span className="absolute left-3.5 text-gray-400"><Smartphone size={14} /></span>
+                      <span className="absolute left-9 text-xs text-gray-500 font-semibold select-none border-r border-gray-200 pr-2">+91</span>
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "") })}
+                        placeholder="98765 43210"
+                        className="w-full bg-transparent pl-20 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Guest Count</label>
+                      <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl focus-within:border-amber-500 focus-within:bg-white transition-all duration-200">
+                        <span className="absolute left-3.5 text-gray-400"><Users size={14} /></span>
+                        <input
+                          type="number"
+                          required
+                          min={10}
+                          value={formData.guestCount}
+                          onChange={(e) => setFormData({ ...formData, guestCount: e.target.value })}
+                          placeholder="e.g. 150"
+                          className="w-full bg-transparent pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Event Date</label>
+                      <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl focus-within:border-amber-500 focus-within:bg-white transition-all duration-200">
+                        <span className="absolute left-3.5 text-gray-400"><Calendar size={14} /></span>
+                        <input
+                          type="date"
+                          required
+                          value={formData.eventDate}
+                          onChange={(e) => setFormData({ ...formData, eventDate: e.target.value })}
+                          className="w-full bg-transparent pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none [color-scheme:light]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isMutating}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-md hover:shadow-amber-500/20 active:translate-y-0.5 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+                  >
+                    {isMutating ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Generating OTP...
+                      </>
+                    ) : (
+                      <>
+                        Request OTP to Unlock Quote <ArrowRight size={14} />
+                      </>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                /* STEP 2: OTP Verification */
+                <form onSubmit={handleStep2Submit} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block text-center">Enter 4-Digit Verification Code</label>
+                    <div className="flex justify-center gap-3">
+                      {otpDigits.map((digit, idx) => (
+                        <input
+                          key={idx}
+                          type="text"
+                          maxLength={1}
+                          value={digit}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          onChange={(e) => handleOtpChange(idx, e.target.value)}
+                          onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                          onPaste={idx === 0 ? handleOtpPaste : undefined}
+                          ref={(el) => { otpInputsRef.current[idx] = el; }}
+                          className="w-12 h-12 bg-gray-50 border border-gray-200 rounded-xl text-center text-lg font-bold font-mono text-gray-900 focus:outline-none focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-all duration-150"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <button
+                      type="submit"
+                      disabled={isMutating}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-md hover:shadow-amber-500/20 active:translate-y-0.5 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+                    >
+                      {isMutating ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Verifying...
+                        </>
+                      ) : (
+                        <>
+                          Verify & Unlock Quote <ArrowRight size={14} />
+                        </>
+                      )}
+                    </button>
+
+                    <div className="flex flex-col gap-2 items-center text-xs text-gray-400">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalStep(1);
+                          setModalError("");
+                        }}
+                        className="flex items-center gap-1 text-gray-500 hover:text-gray-900 font-medium transition-colors cursor-pointer"
+                      >
+                        <ChevronLeft size={13} /> Change details / phone number
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+

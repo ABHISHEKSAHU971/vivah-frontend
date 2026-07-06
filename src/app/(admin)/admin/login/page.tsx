@@ -34,7 +34,7 @@ export default function AdminLogin() {
       
       router.push("/admin/dashboard");
     } catch (err: any) {
-      const msg = err.response?.data?.message || "Invalid admin credentials.";
+      const msg = err.response?.data?.detail || err.response?.data?.message || "Invalid admin credentials.";
       setError(msg);
     }
   };

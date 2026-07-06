@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { 
   ArrowLeft, ArrowRight, Save, CheckCircle, Store, Music, 
-  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle 
+  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -61,6 +61,109 @@ const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-w
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
 const PLANNER_SERVICES = ["full_planning", "partial_coordination", "day_of_coordination", "decor_design"];
 
+interface MenuSelection {
+  category: string;
+  customName?: string;
+  count?: number;
+}
+
+const COURSE_TYPES = [
+  { value: "Starters", label: "Starters" },
+  { value: "Live Counters", label: "Live Counters" },
+  { value: "Soup", label: "Soup" },
+  { value: "Salad/Papad/Achar", label: "Salad/Papad/Achar" },
+  { value: "Special Veg", label: "Special Veg" },
+  { value: "Seasonal Veg", label: "Seasonal Veg" },
+  { value: "Dal", label: "Dal" },
+  { value: "Rice", label: "Rice" },
+  { value: "Breads", label: "Breads" },
+  { value: "Desserts", label: "Desserts" },
+  { value: "Welcome Drinks", label: "Welcome Drinks" },
+  { value: "Special Additions", label: "Special Additions" },
+  { value: "Other", label: "Other Option" },
+];
+
+function parseDescriptionToSelections(description: string): MenuSelection[] {
+  if (!description) return [];
+  const selections: MenuSelection[] = [];
+
+  const startersCats = ["Starters", "Live Counters", "Soup"];
+  const mainCourseCats = ["Salad/Papad/Achar", "Special Veg", "Seasonal Veg", "Dal", "Rice", "Breads", "Desserts"];
+  const allPredefined = [...startersCats, ...mainCourseCats, "Welcome Drinks", "Special Additions"];
+
+  const parts = description.split(/(Starters:|Main Course:|Special Additions:)/i);
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i].trim();
+    if (!part) continue;
+
+    const lowerPart = part.toLowerCase();
+    if (lowerPart === "starters:" || lowerPart === "main course:" || lowerPart === "special additions:") {
+      continue;
+    } else {
+      const itemsStr = part.replace(/\.+$/, "").trim();
+      const items = itemsStr.split(/,\s*/);
+      for (const item of items) {
+        const cleaned = item.trim();
+        if (!cleaned) continue;
+
+        const match = cleaned.match(/^([^(]+)(?:\((\d+)\))?$/);
+        if (match) {
+          const name = match[1].trim();
+          const count = match[2] ? parseInt(match[2], 10) : undefined;
+
+          const matchedPredefined = allPredefined.find(p => p.toLowerCase() === name.toLowerCase());
+          if (matchedPredefined) {
+            selections.push({ category: matchedPredefined, count });
+          } else {
+            selections.push({ category: "Other", customName: name, count });
+          }
+        }
+      }
+    }
+  }
+
+  return selections;
+}
+
+function formatSelectionsToDescription(selections: MenuSelection[]): string {
+  const startersGroup: string[] = [];
+  const mainCourseGroup: string[] = [];
+  const specialAdditionsGroup: string[] = [];
+
+  const startersCats = ["Starters", "Live Counters", "Soup"];
+  const mainCourseCats = ["Salad/Papad/Achar", "Special Veg", "Seasonal Veg", "Dal", "Rice", "Breads", "Desserts"];
+
+  selections.forEach((sel) => {
+    let displayName = sel.category === "Other" ? (sel.customName || "Other") : sel.category;
+    let itemStr = displayName;
+    if (sel.count && sel.count > 0) {
+      itemStr += ` (${sel.count})`;
+    }
+
+    if (startersCats.includes(sel.category)) {
+      startersGroup.push(itemStr);
+    } else if (mainCourseCats.includes(sel.category)) {
+      mainCourseGroup.push(itemStr);
+    } else {
+      specialAdditionsGroup.push(itemStr);
+    }
+  });
+
+  const sections: string[] = [];
+  if (startersGroup.length > 0) {
+    sections.push(`Starters: ${startersGroup.join(", ")}`);
+  }
+  if (mainCourseGroup.length > 0) {
+    sections.push(`Main Course: ${mainCourseGroup.join(", ")}`);
+  }
+  if (specialAdditionsGroup.length > 0) {
+    sections.push(`Special Additions: ${specialAdditionsGroup.join(", ")}`);
+  }
+
+  return sections.join(". ") + (sections.length > 0 ? "." : "");
+}
+
 function AddListingForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -82,10 +185,23 @@ function AddListingForm() {
 
   // Category specific fields
   const [detailForm, setDetailForm] = useState<any>({});
+  const [catererTab, setCatererTab] = useState("packages"); // "profile", "menu", "packages"
 
   // Image Upload State
   const [images, setImages] = useState<{ file?: File; preview: string }[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+
+  const [masterFoodItems, setMasterFoodItems] = useState<any[]>([]);
+  const [newDishCourse, setNewDishCourse] = useState("starter");
+
+  // Fetch master food items on mount
+  useEffect(() => {
+    api.get("/catering/master-food-items/")
+      .then((res) => {
+        setMasterFoodItems(res.data.results || res.data.data || res.data || []);
+      })
+      .catch((err) => console.error("Fetch master food items error:", err));
+  }, []);
 
   // Initialize detailed form structure depending on type
   useEffect(() => {
@@ -147,10 +263,24 @@ function AddListingForm() {
         setDetailForm({
           name: "",
           cuisine_type: "multi",
-          tier: "medium",
-          price_per_plate: "",
+          tier: "high",
+          price_per_plate: 1200,
           min_plates: 100,
-          description: "",
+          description: "Premium wedding catering services.",
+          branches: [],
+          menu_items: [],
+          packages: [
+            {
+              name: "Reception Dinner Platinum",
+              cuisine_type: "multi",
+              tier: "high",
+              price_per_plate: 1200,
+              min_plates: 100,
+              description: "Starters: Live Counters (4), Soup (1). Main Course: Salad/Papad/Achar, Special Veg (1), Seasonal Veg (3), Dal (1), Rice (2), Breads (5), Desserts (4). Special Additions: Barat Welcome, Chinese (2), South Indian (2), Continental (2), Ice Cream (3), Kesari Milk/Coffee (1), Shakes (2), Mocktails (2).",
+              material_option: "both",
+              price_per_plate_without_material: 600
+            }
+          ]
         });
         break;
       case "decorator":
@@ -224,6 +354,27 @@ function AddListingForm() {
       if (!baseForm.address.trim()) errors.address = "Complete Address is required";
       if (!baseForm.city.trim()) errors.city = "City is required";
       if (!baseForm.state.trim()) errors.state = "State is required";
+    } else if (type === "caterer") {
+      if (currentStep === 2) {
+        if (!detailForm.cuisines || detailForm.cuisines.length === 0) {
+          errors["details.cuisines"] = "Select at least one cuisine type";
+        }
+      } else if (currentStep === 4) {
+        if (!detailForm.packages || detailForm.packages.length === 0) {
+          errors["details.packages"] = "Create at least one pricing plan tier";
+        } else {
+          detailForm.packages.forEach((pkg: any, idx: number) => {
+            if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
+            const option = pkg.material_option || "with_material";
+            if ((option === "with_material" || option === "both") && !pkg.price_per_plate) {
+              errors[`details.packages.${idx}.price_per_plate`] = "Price per plate (With Material) is required";
+            }
+            if ((option === "without_material" || option === "both") && !pkg.price_per_plate_without_material) {
+              errors[`details.packages.${idx}.price_per_plate_without_material`] = "Price per plate (Without Material) is required";
+            }
+          });
+        }
+      }
     } else if (currentStep === 2) {
       // Validate service fields based on type
       if (type === "photographer") {
@@ -241,9 +392,6 @@ function AddListingForm() {
       } else if (type === "dj") {
         if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
         if (!detailForm.price) errors["details.price"] = "Price is required";
-      } else if (type === "caterer") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
-        if (!detailForm.price_per_plate) errors["details.price_per_plate"] = "Price per plate is required";
       } else if (type === "decorator") {
         if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
       }
@@ -266,9 +414,13 @@ function AddListingForm() {
   };
 
   const handleSubmit = async (status: "draft" | "pending_approval") => {
-    if (!validateStep(1) || !validateStep(2)) {
-      setStep(1);
-      return;
+    const isCaterer = type === "caterer";
+    const maxValStep = isCaterer ? 4 : 2;
+    for (let s = 1; s <= maxValStep; s++) {
+      if (!validateStep(s)) {
+        setStep(s);
+        return;
+      }
     }
     setLoading(true);
     setErrorMsg("");
@@ -281,11 +433,6 @@ function AddListingForm() {
       details: { ...detailForm }
     };
 
-    // Prepopulate package names for DJ, Caterer, Decorator details if blank
-    if (["dj", "caterer", "decorator"].includes(type) && !payload.details.name) {
-      payload.details.name = baseForm.name;
-    }
-
     // Convert decimal strings to numbers for serialization safety
     if (payload.details.base_package_price) payload.details.base_package_price = parseFloat(payload.details.base_package_price);
     if (payload.details.bridal_package_price) payload.details.bridal_package_price = parseFloat(payload.details.bridal_package_price);
@@ -294,17 +441,26 @@ function AddListingForm() {
     if (payload.details.budget_max) payload.details.budget_max = parseFloat(payload.details.budget_max);
     if (payload.details.price_per_day) payload.details.price_per_day = parseFloat(payload.details.price_per_day);
     if (payload.details.price) payload.details.price = parseFloat(payload.details.price);
-    if (payload.details.price_per_plate) payload.details.price_per_plate = parseFloat(payload.details.price_per_plate);
 
     if (payload.details.team_size) payload.details.team_size = parseInt(payload.details.team_size);
     if (payload.details.delivery_days_limit) payload.details.delivery_days_limit = parseInt(payload.details.delivery_days_limit);
     if (payload.details.min_capacity) payload.details.min_capacity = parseInt(payload.details.min_capacity);
     if (payload.details.max_capacity) payload.details.max_capacity = parseInt(payload.details.max_capacity);
     if (payload.details.hours) payload.details.hours = parseInt(payload.details.hours);
-    if (payload.details.min_plates) payload.details.min_plates = parseInt(payload.details.min_plates);
     if (payload.details.num_ac_rooms !== undefined) payload.details.num_ac_rooms = parseInt(payload.details.num_ac_rooms) || 0;
     if (payload.details.num_non_ac_rooms !== undefined) payload.details.num_non_ac_rooms = parseInt(payload.details.num_non_ac_rooms) || 0;
     if (payload.details.num_halls !== undefined) payload.details.num_halls = parseInt(payload.details.num_halls) || 0;
+
+    // Convert package fields to decimals/numbers for caterer
+    if (isCaterer && payload.details.packages) {
+      payload.details.packages = payload.details.packages.map((pkg: any) => ({
+        ...pkg,
+        price_per_plate: pkg.price_per_plate ? parseFloat(pkg.price_per_plate) : 0,
+        price_per_plate_without_material: pkg.price_per_plate_without_material ? parseFloat(pkg.price_per_plate_without_material) : null,
+        material_option: pkg.material_option || "with_material",
+        min_plates: parseInt(pkg.min_plates) || 50
+      }));
+    }
 
     try {
       const response = await api.post("/listings/", payload);
@@ -332,7 +488,7 @@ function AddListingForm() {
         setFormErrors(flat);
         setErrorMsg("Please fix the validation errors below.");
       } else {
-        setErrorMsg(err.response?.data?.message || "An unexpected error occurred. Please try again.");
+        setErrorMsg(err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error || "An unexpected error occurred. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -380,7 +536,7 @@ function AddListingForm() {
             </div>
             <div>
               <h1 className="text-xl font-heading font-semibold text-gray-900">Add {getServiceLabel()}</h1>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Step {step} of 3</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Step {step} of {type === "caterer" ? 4 : 3}</p>
             </div>
           </div>
         </div>
@@ -392,6 +548,12 @@ function AddListingForm() {
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 2 ? "bg-gold" : "bg-gray-250"}`} />
           <div className="w-6 h-0.5 bg-gray-200" />
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 3 ? "bg-gold" : "bg-gray-250"}`} />
+          {type === "caterer" && (
+            <>
+              <div className="w-6 h-0.5 bg-gray-200" />
+              <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 4 ? "bg-gold" : "bg-gray-250"}`} />
+            </>
+          )}
         </div>
       </div>
 
@@ -487,6 +649,51 @@ function AddListingForm() {
               />
               {formErrors.address && <p className="text-[10px] text-red-500 font-semibold">{formErrors.address}</p>}
             </div>
+            {type === "caterer" && (
+              <div className="space-y-4 pt-3 border-t border-gray-100">
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-widest text-slate-400">Upload Brand Logo & Photos</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Attach photos showcasing your catering business logo, setup, and buffet presentation.</p>
+                </div>
+                <div className="border-2 border-dashed border-gray-200 hover:border-gold/50 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors relative bg-zinc-50/30">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
+                    <Upload size={18} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs font-semibold text-gray-900">Upload brand image / logo</p>
+                    <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                  </div>
+                </div>
+
+                {images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                    {images.map((img, idx) => (
+                      <div key={idx} className="relative h-24 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
+                        <img
+                          src={img.preview}
+                          alt={`Preview ${idx + 1}`}
+                          className="object-cover w-full h-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(idx)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-3">
@@ -500,8 +707,161 @@ function AddListingForm() {
         </div>
       )}
 
-      {/* STEP 2: CATEGORY SPECIFIC DETAILS */}
-      {step === 2 && (
+      {/* STEP 2: BUSINESS PROFILE & BRANCHES FOR CATERER */}
+      {step === 2 && type === "caterer" && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Business Profile & Branches</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Define your cuisines specialization, minimum order limits, and branch locations.</p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Cuisines Checkboxes */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {["Rajasthani", "Gujarati", "South Indian", "Multi-Cuisine", "Punjabi", "Continental", "Jain", "Chinese"].map((cuisine) => {
+                const cuisines = detailForm.cuisines || [];
+                const selected = cuisines.includes(cuisine.toLowerCase());
+                return (
+                  <button
+                    key={cuisine}
+                    type="button"
+                    onClick={() => {
+                      const next = selected 
+                        ? cuisines.filter((c: string) => c !== cuisine.toLowerCase())
+                        : [...cuisines, cuisine.toLowerCase()];
+                      handleDetailChange("cuisines", next);
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs capitalize text-left transition-all flex items-center justify-between ${
+                      selected 
+                        ? "bg-gold/10 text-gold border-gold font-semibold" 
+                        : "bg-white text-gray-600 border-gray-250 hover:border-gray-400"
+                    }`}
+                  >
+                    <span>{cuisine}</span>
+                    {selected && <Check size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+            {formErrors["details.cuisines"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.cuisines"]}</p>}
+          </div>
+
+          {/* Min Guest capacity */}
+          <div className="space-y-1.5 max-w-xs">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity Limit</label>
+            <input
+              type="number"
+              min={20}
+              placeholder="e.g. 50"
+              value={detailForm.min_guests || 50}
+              onChange={(e) => handleDetailChange("min_guests", parseInt(e.target.value) || 50)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-950"
+            />
+          </div>
+
+          {/* Branches Manager */}
+          <div className="space-y-4 pt-3 border-t border-gray-100">
+            <div>
+              <h3 className="text-xs font-semibold text-gray-900">Branch Locations</h3>
+              <p className="text-[10px] text-gray-400">List operational branches to service leads across multiple areas.</p>
+            </div>
+            
+            <div className="space-y-3">
+              {detailForm.branches?.map((branch: any, idx: number) => (
+                <div key={idx} className="flex gap-3 items-end p-4 border border-gray-150 rounded-xl bg-zinc-50/50">
+                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Branch Name</label>
+                      <input
+                        type="text"
+                        value={branch.name}
+                        placeholder="e.g. Main Branch"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].name = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Address</label>
+                      <input
+                        type="text"
+                        value={branch.address}
+                        placeholder="e.g. Maharana Pratap Nagar"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].address = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phone Number</label>
+                      <input
+                        type="text"
+                        value={branch.phone}
+                        placeholder="e.g. 9876543210"
+                        onChange={(e) => {
+                          const list = [...detailForm.branches];
+                          list[idx].phone = e.target.value;
+                          handleDetailChange("branches", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = detailForm.branches.filter((_: any, i: number) => i !== idx);
+                      handleDetailChange("branches", list);
+                    }}
+                    className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition-colors"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              
+              <button
+                type="button"
+                onClick={() => {
+                  const list = [...(detailForm.branches || []), { name: "", address: "", phone: "" }];
+                  handleDetailChange("branches", list);
+                }}
+                className="w-full border border-dashed border-gray-300 py-3 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
+              >
+                + Add Operational Branch
+              </button>
+            </div>
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+            <button
+              onClick={handleBack}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+            >
+              Master Menu Library <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: CATEGORY SPECIFIC DETAILS FOR NON-CATERERS */}
+      {step === 2 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
             <h2 className="text-base font-semibold text-gray-900 font-heading">{getServiceLabel()} Specification Details</h2>
@@ -955,7 +1315,7 @@ function AddListingForm() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
                   <select
-                    value={detailForm.tier}
+                    value={detailForm.tier || "medium"}
                     onChange={(e) => handleDetailChange("tier", e.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
                   >
@@ -1004,90 +1364,7 @@ function AddListingForm() {
             </div>
           )}
 
-          {/* CATERING DETAIL FORM */}
-          {type === "caterer" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Catering Package Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Royal Silver Buffet Menu, Premium Fusion Cuisine"
-                  value={detailForm.name}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisine Category</label>
-                  <select
-                    value={detailForm.cuisine_type}
-                    onChange={(e) => handleDetailChange("cuisine_type", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  >
-                    {CUISINE_CHOICES.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
-                  <select
-                    value={detailForm.tier}
-                    onChange={(e) => handleDetailChange("tier", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  >
-                    {TIER_CHOICES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (INR) (₹)</label>
-                  <input
-                    type="number"
-                    value={detailForm.price_per_plate}
-                    placeholder="e.g. 500"
-                    onChange={(e) => handleDetailChange("price_per_plate", e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                      formErrors["details.price_per_plate"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                    }`}
-                  />
-                  {formErrors["details.price_per_plate"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.price_per_plate"]}</p>}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Plates Required</label>
-                  <input
-                    type="number"
-                    min={20}
-                    value={detailForm.min_plates}
-                    onChange={(e) => handleDetailChange("min_plates", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Menu Items & Descriptions</label>
-                <textarea
-                  value={detailForm.description}
-                  rows={4}
-                  placeholder="e.g. Starters: Paneer Tikka, Veg Spring Rolls. Main Course: Paneer Butter Masala, Mix Veg, Butter Naan, Veg Pulao. Dessert: Gulab Jamun with Ice Cream."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
-            </div>
-          )}
 
           {/* DECORATION DETAIL FORM */}
           {type === "decorator" && (
@@ -1184,8 +1461,8 @@ function AddListingForm() {
         </div>
       )}
 
-      {/* STEP 3: MEDIA UPLOAD & SUBMIT */}
-      {step === 3 && (
+      {/* STEP 3: MEDIA UPLOAD & SUBMIT FOR NON-CATERERS */}
+      {step === 3 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
             <h2 className="text-base font-semibold text-gray-900 font-heading">Media Showcase Upload</h2>
@@ -1239,6 +1516,659 @@ function AddListingForm() {
               <CheckCircle size={14} className="shrink-0 text-gold mt-0.5" />
               <p>Image files will be linked with your listing profile. You can finalize your changes and save this listing immediately.</p>
             </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex flex-col sm:flex-row sm:justify-between items-center gap-4 pt-3 border-t border-gray-100">
+            <button
+              onClick={handleBack}
+              disabled={loading}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center justify-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => handleSubmit("draft")}
+                disabled={loading}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-950 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm"
+              >
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Save Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit("pending_approval")}
+                disabled={loading}
+                className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
+              >
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                Publish for Approval
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: MASTER MENU LIBRARY FOR CATERER */}
+      {step === 3 && type === "caterer" && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Master Menu Library</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Add dishes cataloged in your catering plans so customers can browse or select them.</p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Add dish inline form */}
+          <div className="p-4 border border-gold/20 rounded-2xl bg-gold/5 space-y-3">
+            <h4 className="text-[10px] font-bold text-gold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded-full bg-gold text-black flex items-center justify-center text-[8px] font-black">+</span>
+              Add Dish to Library
+            </h4>
+            
+            {/* Global Catalog Selector */}
+            {masterFoodItems.length > 0 && (
+              <div className="space-y-1 pb-1">
+                <label className="text-[9px] font-bold text-gold uppercase block">Select from Shared Database Catalog (Optional)</label>
+                <select
+                  id="select-master-food"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    const matched = masterFoodItems.find((x) => String(x.id) === val);
+                    if (matched) {
+                      const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                      const vegBtn = document.getElementById("nd-veg") as HTMLButtonElement;
+                      const jainBtn = document.getElementById("nd-jain") as HTMLButtonElement;
+                      const spicyBtn = document.getElementById("nd-spicy") as HTMLButtonElement;
+
+                      if (nameEl) nameEl.value = matched.name;
+
+                      // Update buttons active status
+                      if (vegBtn) {
+                        vegBtn.dataset.active = matched.is_veg ? "true" : "false";
+                        vegBtn.className = matched.is_veg
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                      if (jainBtn) {
+                        jainBtn.dataset.active = matched.is_jain ? "true" : "false";
+                        jainBtn.className = matched.is_jain
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                      if (spicyBtn) {
+                        spicyBtn.dataset.active = matched.is_spicy ? "true" : "false";
+                        spicyBtn.className = matched.is_spicy
+                          ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all"
+                          : "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                      }
+                    }
+                  }}
+                  className="w-full border border-gold/30 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                >
+                  <option value="">-- Choose a standard dish --</option>
+                  {masterFoodItems
+                    .filter((item) => item.course === newDishCourse)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Dish Name *</label>
+                <input
+                  type="text"
+                  id="new-dish-name"
+                  placeholder="e.g. Paneer Pasanda, Dal Makhni"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/20"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Course</label>
+                <select
+                  id="new-dish-course"
+                  value={newDishCourse}
+                  onChange={(e) => {
+                    setNewDishCourse(e.target.value);
+                    const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                    if (nameEl) nameEl.value = ""; // Clear input on course change
+                    const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
+                    if (selectCatalog) selectCatalog.value = ""; // Reset catalog select
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="live">Live Counter</option>
+                  <option value="soup">Soup</option>
+                  <option value="special_veg">Special Veg</option>
+                  <option value="seasonal_veg">Seasonal Veg</option>
+                  <option value="dal">Dal</option>
+                  <option value="rice">Rice</option>
+                  <option value="breads">Breads Basket</option>
+                  <option value="dessert">Dessert</option>
+                  <option value="welcome">Welcome Drink</option>
+                  <option value="special_additions">Special Additions</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-gray-400 uppercase">Short Description</label>
+                <input
+                  type="text"
+                  id="new-dish-desc"
+                  placeholder="Ingredients, style notes..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                />
+              </div>
+              <div className="flex gap-2 justify-between items-end">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-gray-400 uppercase block mb-1">Dietary</label>
+                  <div id="new-dish-dietary" className="flex gap-1.5">
+                    {[
+                      { id: "nd-veg",   label: "Veg",  field: "is_veg",   emoji: "🌿" },
+                      { id: "nd-jain",  label: "Jain", field: "is_jain",  emoji: "🙏" },
+                      { id: "nd-spicy", label: "Hot",  field: "is_spicy", emoji: "🌶️" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        id={opt.id}
+                        data-active="false"
+                        onClick={(e) => {
+                          const btn = e.currentTarget;
+                          const isActive = btn.dataset.active === "true";
+                          btn.dataset.active = isActive ? "false" : "true";
+                          btn.className = isActive
+                            ? "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all"
+                            : "px-1.5 py-1 rounded border text-[9px] font-bold border-gold/60 bg-gold/10 text-gold transition-all";
+                        }}
+                        className="px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all"
+                        title={opt.label}
+                      >
+                        {opt.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              type="button"
+              onClick={async () => {
+                const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                const courseEl = document.getElementById("new-dish-course") as HTMLSelectElement;
+                const descEl = document.getElementById("new-dish-desc") as HTMLInputElement;
+                const vegBtn = document.getElementById("nd-veg") as HTMLButtonElement;
+                const jainBtn = document.getElementById("nd-jain") as HTMLButtonElement;
+                const spicyBtn = document.getElementById("nd-spicy") as HTMLButtonElement;
+                
+                const name = nameEl?.value.trim();
+                if (!name) return;
+
+                const course = courseEl?.value || "main";
+                const is_veg = vegBtn?.dataset.active === "true";
+                const is_jain = jainBtn?.dataset.active === "true";
+                const is_spicy = spicyBtn?.dataset.active === "true";
+                const description = descEl?.value.trim() || "";
+
+                // 1. Check if it already exists in the standard catalog
+                let masterFoodItem = masterFoodItems.find(
+                  (x) => x.name.toLowerCase() === name.toLowerCase() && x.course === course
+                );
+
+                // 2. If it does not exist, save it globally on the backend
+                if (!masterFoodItem) {
+                  try {
+                    const res = await api.post("/catering/master-food-items/", {
+                      name,
+                      course,
+                      is_veg,
+                      is_jain,
+                      is_spicy,
+                      description
+                    });
+                    masterFoodItem = res.data;
+                    setMasterFoodItems((prev) => [...prev, masterFoodItem]);
+                  } catch (err) {
+                    console.error("Error creating custom master food item:", err);
+                  }
+                }
+
+                // 3. Add to the local caterer package selection
+                const list = [...(detailForm.menu_items || []), {
+                  name,
+                  course,
+                  is_veg,
+                  is_jain,
+                  is_spicy,
+                  description,
+                  master_food_item: masterFoodItem ? masterFoodItem.id : null
+                }];
+                
+                handleDetailChange("menu_items", list);
+                nameEl.value = "";
+                if (descEl) descEl.value = "";
+                
+                // Reset select dropdown
+                const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
+                if (selectCatalog) selectCatalog.value = "";
+
+                // Reset dietary toggles
+                [vegBtn, jainBtn, spicyBtn].forEach((btn) => {
+                  if (btn) {
+                    btn.dataset.active = "false";
+                    btn.className = "px-1.5 py-1 rounded border text-[9px] font-bold border-gray-200 bg-white text-gray-400 transition-all";
+                  }
+                });
+              }}
+              className="w-full btn-gold rounded-lg py-2 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm"
+            >
+              + Add Dish
+            </button>
+          </div>
+
+          {/* Dishes list table */}
+          <div className="border border-gray-150 rounded-xl overflow-hidden shadow-sm bg-white">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-gray-150 text-gray-500 font-semibold">
+                  <th className="p-3">Dish Name</th>
+                  <th className="p-3">Course</th>
+                  <th className="p-3 text-center">Dietary Options</th>
+                  <th className="p-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(!detailForm.menu_items || detailForm.menu_items.length === 0) ? (
+                  <tr>
+                    <td colSpan={4} className="p-6 text-center text-gray-400 italic">No dishes added to your library yet. Add some starters or mains above!</td>
+                  </tr>
+                ) : (
+                  detailForm.menu_items.map((m: any, idx: number) => (
+                    <tr key={idx} className="border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3 font-semibold text-gray-900">{m.name}</td>
+                      <td className="p-3 capitalize text-gray-500">{m.course}</td>
+                      <td className="p-3">
+                        <div className="flex gap-2 justify-center">
+                          {["is_veg", "is_jain", "is_spicy"].map((opt) => (
+                            <label key={opt} className="flex items-center gap-1 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={m[opt] || false}
+                                onChange={(e) => {
+                                  const list = [...detailForm.menu_items];
+                                  list[idx][opt] = e.target.checked;
+                                  handleDetailChange("menu_items", list);
+                                }}
+                                className="w-3.5 h-3.5 accent-gold"
+                              />
+                              <span className="text-[10px] text-gray-500 capitalize">{opt.replace("is_", "")}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const list = detailForm.menu_items.filter((_: any, i: number) => i !== idx);
+                            handleDetailChange("menu_items", list);
+                          }}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg border border-transparent hover:border-red-100 transition-all font-semibold"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+            <button
+              onClick={handleBack}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+            >
+              Package Tiers <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: PACKAGE TIERS FOR CATERER */}
+      {step === 4 && type === "caterer" && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Package Tiers (Plans)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Build pricing packages (e.g. Silver, Gold, Platinum) with plate pricing, minimum plates limits, and choose included items.</p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Packages List */}
+          <div className="space-y-4">
+            {detailForm.packages?.map((pkg: any, idx: number) => (
+              <div key={idx} className="p-4 border border-gray-200 rounded-2xl bg-zinc-50/30 space-y-4 relative animate-fade-in">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gold">Plan Option #{idx + 1}</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = detailForm.packages.filter((_: any, i: number) => i !== idx);
+                      handleDetailChange("packages", list);
+                    }}
+                    className="bg-red-50 text-red-500 p-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Name</label>
+                    <input
+                      type="text"
+                      value={pkg.name}
+                      placeholder="e.g. Silver Plan, Premium Gold Banquet"
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].name = e.target.value;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                    />
+                    {formErrors[`details.packages.${idx}.name`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.name`]}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisine type</label>
+                      <select
+                        value={pkg.cuisine_type || "multi"}
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].cuisine_type = e.target.value;
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {CUISINE_CHOICES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service tier</label>
+                      <select
+                        value={pkg.tier || "medium"}
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].tier = e.target.value;
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {TIER_CHOICES.map((t) => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Material Option</label>
+                    <select
+                      value={pkg.material_option || "with_material"}
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].material_option = e.target.value;
+                        if (e.target.value === "with_material") {
+                          list[idx].price_per_plate_without_material = "";
+                        } else if (e.target.value === "without_material") {
+                          list[idx].price_per_plate = "";
+                        }
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                    >
+                      <option value="with_material">With Material Only</option>
+                      <option value="without_material">Without Material Only</option>
+                      <option value="both">Both (With & Without Material)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Min Plates Limit</label>
+                    <input
+                      type="number"
+                      value={pkg.min_plates}
+                      placeholder="e.g. 80"
+                      onChange={(e) => {
+                        const list = [...detailForm.packages];
+                        list[idx].min_plates = parseInt(e.target.value) || 50;
+                        handleDetailChange("packages", list);
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                    />
+                  </div>
+                </div>
+
+                {/* Conditional Prices Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(pkg.material_option === "with_material" || pkg.material_option === "both" || !pkg.material_option) && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (With Material) (₹)</label>
+                      <input
+                        type="number"
+                        value={pkg.price_per_plate}
+                        placeholder="e.g. 1200"
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].price_per_plate = parseFloat(e.target.value) || "";
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                      {formErrors[`details.packages.${idx}.price_per_plate`] && (
+                        <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate`]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {(pkg.material_option === "without_material" || pkg.material_option === "both") && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Price Per Plate (Without Material) (₹)</label>
+                      <input
+                        type="number"
+                        value={pkg.price_per_plate_without_material ?? ""}
+                        placeholder="e.g. 600"
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].price_per_plate_without_material = parseFloat(e.target.value) || "";
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                      {formErrors[`details.packages.${idx}.price_per_plate_without_material`] && (
+                        <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price_per_plate_without_material`]}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">
+                    Configure Included Menu Items
+                  </label>
+                  
+                  {/* Active Selections List */}
+                  <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-xl bg-white min-h-[46px]">
+                    {(() => {
+                      const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                      if (selections.length === 0) {
+                        return <span className="text-xs text-gray-400 italic">No menu items configured yet. Choose a course and count below.</span>;
+                      }
+                      return selections.map((sel: any, sIdx: number) => (
+                        <span
+                          key={sIdx}
+                          className="inline-flex items-center gap-1.5 bg-gold/10 text-gold border border-gold/20 text-xs px-2.5 py-1 rounded-lg font-semibold"
+                        >
+                          <span>
+                            {sel.category === "Other" ? sel.customName : sel.category}
+                            {sel.count && sel.count > 0 ? ` (${sel.count})` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = selections.filter((_: any, i: number) => i !== sIdx);
+                              const list = [...detailForm.packages];
+                              list[idx] = {
+                                ...pkg,
+                                menu_selections: updated,
+                                description: formatSelectionsToDescription(updated)
+                              };
+                              handleDetailChange("packages", list);
+                            }}
+                            className="text-gray-400 hover:text-red-500 rounded-full transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ));
+                    })()}
+                  </div>
+
+                  {/* Selection Form */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-zinc-50/50 p-3 border border-gray-150 rounded-xl">
+                    <div className="sm:col-span-4 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Course Menu</label>
+                      <select
+                        id={`sel-course-${idx}`}
+                        defaultValue="Starters"
+                        onChange={(e) => {
+                          const otherEl = document.getElementById(`sel-other-div-${idx}`);
+                          if (otherEl) {
+                            if (e.target.value === "Other") {
+                              otherEl.classList.remove("hidden");
+                            } else {
+                              otherEl.classList.add("hidden");
+                            }
+                          }
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        {COURSE_TYPES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div id={`sel-other-div-${idx}`} className="sm:col-span-4 space-y-1 hidden">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Custom Option Name</label>
+                      <input
+                        type="text"
+                        id={`sel-custom-name-${idx}`}
+                        placeholder="e.g. Mocktails, Ice Cream"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase block">Count / Quantity</label>
+                      <select
+                        id={`sel-count-${idx}`}
+                        defaultValue="1"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                      >
+                        <option value="none">No Count (Optional)</option>
+                        {Array.from({ length: 15 }, (_, i) => i + 1).map((num) => (
+                          <option key={num} value={num}>{num}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const courseEl = document.getElementById(`sel-course-${idx}`) as HTMLSelectElement;
+                          const countEl = document.getElementById(`sel-count-${idx}`) as HTMLSelectElement;
+                          const customNameEl = document.getElementById(`sel-custom-name-${idx}`) as HTMLInputElement;
+
+                          const category = courseEl?.value || "Starters";
+                          const countVal = countEl?.value;
+                          const count = countVal === "none" ? undefined : parseInt(countVal, 10);
+                          const customName = category === "Other" ? (customNameEl?.value.trim() || "Other") : undefined;
+
+                          if (category === "Other" && !customName) return;
+
+                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                          const newSelection: MenuSelection = {
+                            category,
+                            customName,
+                            count
+                          };
+
+                          const updated = [...selections, newSelection];
+                          const list = [...detailForm.packages];
+                          list[idx] = {
+                            ...pkg,
+                            menu_selections: updated,
+                            description: formatSelectionsToDescription(updated)
+                          };
+                          handleDetailChange("packages", list);
+
+                          if (customNameEl) customNameEl.value = "";
+                        }}
+                        className="w-full btn-gold rounded-lg py-1.5 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm h-[32px]"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {formErrors["details.packages"] && <p className="text-xs text-red-500 font-semibold">{formErrors["details.packages"]}</p>}
+
+            <button
+              type="button"
+              onClick={() => {
+                const list = [
+                  ...(detailForm.packages || []),
+                  { name: "", cuisine_type: "multi", tier: "medium", price_per_plate: "", min_plates: 80, description: "", material_option: "with_material", price_per_plate_without_material: "" }
+                ];
+                handleDetailChange("packages", list);
+              }}
+              className="w-full border border-dashed border-gray-300 py-3.5 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
+            >
+              + Create New Pricing Plan Tier
+            </button>
           </div>
 
           {/* Controls */}

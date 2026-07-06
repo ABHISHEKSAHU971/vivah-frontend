@@ -1,109 +1,70 @@
-# PlanMyVivah — Customer Flow Implementation Roadmap (Gated Pricing Version)
+# Implementation Plan — Phase 7: Collaborative Multi-Vendor Budget Planner & External Package Customizer
 
-This document outlines the phase-wise rollout for the gated customer booking flow. It maps the technical execution layers to specific BMad agents to ensure modular and verified development.
-
----
-
-## 🗺️ Phases of Execution
-
-### Phase 1: Database Schema, Models & OTP Service Setup (Backend)
-*   **Goal:** Setup backend models and service layers for lead-gated inquiries and OTP generation.
-*   **Scope of Work:**
-    - Verify that [BaseListing](file:///d:/PlanMyvivah/celebrationplatform/apps/listings/models/base_listing.py) and [Venue](file:///d:/PlanMyvivah/celebrationplatform/apps/venues/models/venue.py) relationships are fully configured.
-    - Check that [Booking](file:///d:/PlanMyvivah/celebrationplatform/apps/bookings/models/booking.py) tables have correct ForeignKeys for packages (`catering_package`, `decoration_package`).
-    - Create `OTPVerification` model in the backend to store `phone_number`, `otp_hash`, `expires_at`, and `is_verified` state.
-    - Implement a utility service wrapper for sending OTP codes via SMS/WhatsApp (with mock fallback for development).
-*   **Responsible Agent:** `💻 Amelia` (Senior Software Engineer) & `📋 John` (Product Manager)
-*   **BMad Command:** `/bmad-agent-dev` to write the model and mock integration service.
+This feature introduces a dynamic, multi-vendor quote builder. Verified users can select external catering and decoration packages (with themes and tiers) and dynamically calculate combined pricing breakdown estimates. Anonymous users are lead-gated to capture their credentials before accessing these options.
 
 ---
 
-### Phase 2: Authentication & Gated Pricing API (Backend)
-*   **Goal:** Expose endpoints for sending/verifying OTP and the gated pricing calculation controller.
-*   **Scope of Work:**
-    - Expose `POST /api/v1/auth/otp/send/`: Generates 4-digit code and dispatches SMS/WhatsApp.
-    - Expose `POST /api/v1/auth/otp/verify/`: Validates code, marks OTP as verified, and signs a User Session/JWT token.
-    - Expose gated endpoint `GET /api/v1/venues/{id}/pricing-breakdown/`:
-        - Requires JWT Authentication.
-        - If authenticated, calculates and returns the dynamic price breakdown (Rent + Catering + Decor + Royalty + GST).
-        - If unauthenticated, returns HTTP 401 Unauthorized or structured metadata with starting prices only (`{"gated": true, "starting_veg_plate": X, "starting_rent": Y}`).
-    - Expose `POST /api/v1/bookings/inquiries/`: Automatically creates an inquiry lead when the user completes verification.
-*   **Responsible Agent:** `💻 Amelia` (Senior Software Engineer)
-*   **BMad Command:** `/bmad-agent-dev`
+## User Review Required
+
+> [!IMPORTANT]
+> **Vendor Location & Verification Constraints**:
+> * We will **only show vendors located in the same city as the venue** (`vendor__city = venue.city`).
+> * We will **only show approved/verified vendors** (`vendor__is_approved = True`).
+
+> [!IMPORTANT]
+> **Date-Based Availability Check**:
+> * A vendor is considered **unavailable** for a selected date if they already have an active (`confirmed` or `pending`) booking on that date. 
+> * We will filter out booked vendors from the dropdown listings based on the selected `event_date`.
 
 ---
 
-### Phase 3: Frontend Gated Configurator & Verification Modal (Frontend UI)
-*   **Goal:** Build the lock overlay on pricing cards and the two-step verification modal.
-*   **Scope of Work:**
-    - In [venues/[id]/page.tsx](file:///d:/PlanMyvivah/frontend/src/app/venues/[id]/page.tsx):
-        - Integrate local state check for `isVerified` (checking browser cookie/JWT).
-        - If `isVerified` is false, apply a CSS blur/overlay mask onto the pricing breakdown widget.
-        - Create the **"Unlock Quote" Modal Component**:
-            - **Step 1 Form**: Collect Name, Phone Number, Guest Count, and Event Date.
-            - **Step 2 OTP**: Render verification input grid.
-        - Wire the form submit handlers to call backend OTP endpoints via React-Query.
-*   **Responsible Agent:** `🎨 Sally` (UX Designer) for the flow verification and transitions; `💻 Amelia` (Developer) for code.
-*   **BMad Command:** `/bmad-agent-ux-designer` to design mock layouts, then `/bmad-agent-dev` to implement.
+## Proposed Changes
+
+### 1. Backend API Extensions (Django)
+
+#### [NEW] [endpoints.py] (Catering & Decor Availability Lists)
+* Create endpoints or expand `CateringPackageViewSet` and `DecorationPackageViewSet` in the backend:
+  * Expose `GET /api/v1/catering/catering-packages/available/?venue_id=X&date=YYYY-MM-DD`
+  * Expose `GET /api/v1/decorations/decoration-packages/available/?venue_id=X&date=YYYY-MM-DD`
+  * **Filtering Logic**:
+    1. Retrieve the `Venue` by `venue_id` to get its `city`.
+    2. Query all approved packages (`vendor__is_approved=True`) in that city (`vendor__city=venue.city`).
+    3. Exclude packages where the vendor already has a booking on `date` with status `confirmed` or `pending`.
+
+#### [MODIFY] [venue_inquiry.py](file:///c:/Users/91722/Downloads/PlanMyVivah/vivah-backend/Vivah/apps/venues/models/venue_inquiry.py)
+* Add optional foreign keys `catering_package` and `decoration_package` to the `VenueInquiry` model.
+* Generate and run database migrations.
+
+#### [MODIFY] [serializers.py](file:///c:/Users/91722/Downloads/PlanMyVivah/vivah-backend/Vivah/apps/venues/serializers/__init__.py)
+* Expose `catering_package` and `decoration_package` inside the `VenueInquirySerializer` fields list.
 
 ---
 
-### Phase 4: Dynamic Calculator & Comparison Card Integration (Frontend UI)
-*   **Goal:** Render the dynamic 3-card layout and recalculate prices on customization changes.
-*   **Scope of Work:**
-    - Once user session state transitions to `isVerified: true`, fetch detailed pricing from `/api/v1/venues/{id}/pricing-breakdown/`.
-    - Wire interactive inputs (toggles for In-house vs. External Decor, and selected themes) to the price calculator.
-    - Render the side-by-side **3 Pricing Cards** comparison layout (Venue Only vs. Venue + In-house vs. Venue + External Decor).
-    - Update the primary widget CTA to `"Request Site Visit"` (high intent) which submits the inquiry.
-*   **Responsible Agent:** `💻 Amelia` (Senior Software Engineer)
-*   **BMad Command:** `/bmad-agent-dev`
+### 2. Frontend Layout & Interactive Controls (Next.js)
+
+#### [MODIFY] [page.tsx](file:///c:/Users/91722/Downloads/PlanMyVivah/vivah-frontend/src/app/venues/[id]/page.tsx)
+* **Gated State Handling**:
+  * If `isVerified` is false and the user clicks the "External Vendor" tab or dropdown, trigger the "Unlock Quote" Modal.
+  * Step 1 Form collects: Name, Phone, Guest Count, and Event Date.
+* **Dynamic Selectors (Verified Session)**:
+  * When `isVerified` is true and "External Vendor" is selected:
+    * Fetch available external caterers: `GET /api/v1/catering/catering-packages/available/?venue_id={id}&date={eventDate}`.
+    * Fetch available external decorators: `GET /api/v1/decorations/decoration-packages/available/?venue_id={id}&date={eventDate}`.
+    * Render selectors for **External Caterer** (brand name + plate pricing) and **External Decorator** (brand name + selected tier).
+* **Pricing Calculator Integration**:
+  * Update `useQuery` for `/api/v1/venues/{id}/pricing-breakdown/` to pass selected packages.
+  * Re-run calculations in real-time when customizers change.
+* **Inquiry Submission**:
+  * Pass selected external catering and decoration package IDs to the bookings inquiry payload.
 
 ---
 
-### Phase 5: Notification Routing & Booking CRM Workflow (Workflow Integration)
-*   **Goal:** Alert venue managers and sales coordinators when inquiries are submitted.
-*   **Scope of Work:**
-    - Hook inquiry creation hooks in Django/FastAPI backend.
-    - Dispatch automated WhatsApp alerts to the registered Venue Manager with the details: *"New Lead for [Date]! [Name], [Guests] guests. View Quote details on dashboard."*
-    - Setup email alerts for internal PlanMyVivah sales coordinators.
-*   **Responsible Agent:** `💻 Amelia` (Developer) & `📋 John` (Product Manager)
-*   **BMad Command:** `/bmad-agent-dev`
+## Verification Plan
 
----
-
-### Phase 6: E2E Integration Testing & Quality Gate (Testing)
-*   **Goal:** Validate that users can search, customize, complete the OTP flow, see pricing, and submit booking requests successfully.
-*   **Scope of Work:**
-    - Write end-to-end integration tests using Playwright/Cypress:
-        1. Access listing -> navigate to detail -> verify pricing is locked.
-        2. Enter invalid phone/OTP -> check validation alerts.
-        3. Enter correct OTP -> verify modal closes, pricing calculations are revealed, and interactive controls update totals.
-        4. Click "Request Site Visit" -> verify database contains lead with all customized selections.
-*   **Responsible Agent:** `🍵 Murat` (QA Test Architect)
-*   **BMad Command:** `/bmad-tea`
-
----
-
-## 🤖 Recommended Agent Instructions & Prompts
-
-Use these exact commands when you want to instruct our AI agents to build these phases.
-
-### 1. Backend Setup (Phases 1 & 2)
-```bash
-/bmad-agent-dev Implement the OTPVerification model and service layer. Then expose the endpoints for POST /api/v1/auth/otp/send/ and /api/v1/auth/otp/verify/. Ensure the venue detail price calculation API is gated behind authenticated sessions.
-```
-
-### 2. UI Layout Review (Phase 3 UX)
-```bash
-/bmad-agent-ux-designer Review the mock layout for the 'Unlock Pricing' Modal on mobile. Verify that the two-step flow (Form -> OTP) minimizes friction for Indian wedding planners.
-```
-
-### 3. Frontend Implementation (Phases 3 & 4)
-```bash
-/bmad-agent-dev Build the interactive pricing configurator on the venue detail page. Implement the CSS blur lock overlay for anonymous users, trigger the OTP verification modal, and render the dynamic 3-card pricing breakdown upon verification.
-```
-
-### 4. Integration Test Design (Phase 6)
-```bash
-/bmad-tea Create the acceptance test suite for the customer gated pricing flow. Simulate verification steps, dynamic pricing calculations, and final site-visit request submission.
-```
+### Automated Tests
+* Create E2E Playwright integration tests:
+  1. Complete OTP verification.
+  2. Set event date `2026-11-20`.
+  3. Select external caterer and decorator dropdown values.
+  4. Assert pricing updates correctly.
+  5. Check that bookings inquiry POST submits package IDs and successfully creates inquiry.
