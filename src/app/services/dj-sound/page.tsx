@@ -8,6 +8,7 @@ import { Music, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
+import Link from "next/link";
 
 const MOCK_DJS = [
   { id: 101, name: "DJ Rohit & LED Sound", type: "Full Sound & Lighting", price: "45,000", rating: "4.8", gear: ["JBL VRX Line Array", "LED Stage backdrop", "Smoke & Spark Machines"], image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80", city: "Indore" },
@@ -109,12 +110,12 @@ export default function DjSoundPage() {
                         Inquiry Sent! Our entertainment manager will contact you.
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => handleBookClick(dj)}
-                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl cursor-pointer"
+                      <Link 
+                        href={`/services/dj-sound/${dj.id}`}
+                        className="w-full btn-gold py-2.5 text-[11px] justify-center rounded-xl cursor-pointer text-center font-semibold flex items-center gap-1.5"
                       >
-                        Check Availability & Book DJ <MessageSquare size={13} />
-                      </button>
+                        Check Availability & Customize <MessageSquare size={13} />
+                      </Link>
                     )}
                   </div>
                 </div>
