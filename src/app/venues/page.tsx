@@ -41,7 +41,7 @@ interface Venue {
   total_bookings: number;
   min_capacity: number;
   max_capacity: number;
-  images?: { image: string }[];
+  primary_image?: string;
 }
 
 function VenuesPageContent() {
@@ -119,7 +119,7 @@ function VenuesPageContent() {
 
   const hasActiveFilters = !!(city || guests || search || priceRange || eventDate);
   const getVenueImage = (venue: Venue, idx: number) =>
-    venue.images?.[0]?.image || VENUE_IMAGES[idx % VENUE_IMAGES.length];
+    venue.primary_image || VENUE_IMAGES[idx % VENUE_IMAGES.length];
 
   return (
     <>
