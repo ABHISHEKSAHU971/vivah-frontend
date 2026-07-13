@@ -9,7 +9,7 @@ import {
   ArrowLeft, Check, AlertTriangle, Music, Mic, Clock, 
   Sparkles, Star, Play, ChevronRight, CheckCircle2 
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
@@ -152,15 +152,6 @@ export default function DjCustomizerPage() {
   });
 
   const djVendor = dbVendors?.find((v: any) => v.id === vendorId);
-
-  const getImageUrl = (url: string | null | undefined) => {
-    if (!url) return null;
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      return url;
-    }
-    const cleanUrl = url.startsWith("/") ? url : `/${url}`;
-    return `http://localhost:8000${cleanUrl}`;
-  };
 
   // 1. Fetch live DJ packages for this vendor
   const { data: dbPackages, isLoading } = useQuery({

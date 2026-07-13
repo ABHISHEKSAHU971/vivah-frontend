@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Utensils, Check, MapPin, ArrowRight, Star, ChefHat, Clock, Users } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
+import { getImageUrl } from "@/lib/api";
 
 const MOCK_CATERERS = [
   { 
@@ -78,7 +79,7 @@ export default function CateringPage() {
           total_reviews: 89,
           min_guests: biz?.min_guests || 50,
           specialties: formattedCuisines.length > 0 ? formattedCuisines : ["Custom Wedding Menus", "Multi-Cuisine"],
-          image: biz?.logo_url || v.logo || "https://images.unsplash.com/photo-1555244162-803834f70033?w=800&q=80",
+          image: getImageUrl(biz?.logo_url || v.logo) || "https://images.unsplash.com/photo-1555244162-803834f70033?w=800&q=80",
           city: biz?.city || v.city,
           packages_count: packages.length,
           cuisines: biz?.cuisines || [],
@@ -157,11 +158,10 @@ export default function CateringPage() {
                   >
                     {/* Card Image */}
                     <div className="relative h-52 overflow-hidden bg-gray-200 shrink-0">
-                      <Image
+                      <img
                         src={caterer.image}
                         alt={caterer.name}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
