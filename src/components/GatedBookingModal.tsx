@@ -16,6 +16,7 @@ interface GatedBookingModalProps {
   serviceType: "catering" | "decorator" | "dj";
   cateringPackageId?: number | null;
   decorationPackageId?: number | null;
+  customizationDetails?: string;
 }
 
 export default function GatedBookingModal({
@@ -25,7 +26,8 @@ export default function GatedBookingModal({
   vendorName,
   serviceType,
   cateringPackageId = null,
-  decorationPackageId = null
+  decorationPackageId = null,
+  customizationDetails = ""
 }: GatedBookingModalProps) {
   // App store auth & fields
   const storeToken = useStore((s) => s.token);
@@ -192,7 +194,11 @@ export default function GatedBookingModal({
   };
 
   const submitFinalInquiry = (e164Phone: string, userName: string) => {
-    const formattedMessage = `Individual ${serviceType.toUpperCase()} booking inquiry for ${vendorName}. Guest Count: ${formData.guestCount || 150}, Event Date: ${formData.eventDate || "Not Specified"}.`;
+    let formattedMessage = `Individual ${serviceType.toUpperCase()} booking inquiry for ${vendorName}. Guest Count: ${formData.guestCount || 150}, Event Date: ${formData.eventDate || "Not Specified"}.`;
+
+    if (customizationDetails) {
+      formattedMessage += `\n\nCustom Setup details:\n${customizationDetails}`;
+    }
 
     submitInquiryMutation.mutate(
       {
