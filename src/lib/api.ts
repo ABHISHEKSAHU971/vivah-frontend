@@ -60,3 +60,13 @@ api.interceptors.response.use(
     return Promise.reject(err);
   }
 );
+
+export const getImageUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+  return `http://localhost:8000${cleanUrl}`;
+};
+

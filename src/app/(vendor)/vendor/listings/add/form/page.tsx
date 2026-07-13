@@ -260,11 +260,18 @@ function AddListingForm() {
         break;
       case "dj":
         setDetailForm({
-          name: "",
-          tier: "medium",
-          price: "",
-          hours: 6,
-          description: "",
+          packages: [
+            {
+              name: "Standard Package",
+              tier: "medium",
+              price: "",
+              hours: 6,
+              theme: "modern",
+              occasion_types: ["wedding"],
+              description: "",
+              equipment: [],
+            }
+          ]
         });
         break;
       case "caterer":
@@ -411,8 +418,21 @@ function AddListingForm() {
         if (!detailForm.price_per_day) errors["details.price_per_day"] = "Daily rent is required";
         if (!detailForm.max_capacity) errors["details.max_capacity"] = "Max capacity is required";
       } else if (type === "dj") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
-        if (!detailForm.price) errors["details.price"] = "Price is required";
+        if (!detailForm.packages || detailForm.packages.length === 0) {
+          errors["details.packages"] = "Create at least one DJ package plan tier";
+        } else {
+          detailForm.packages.forEach((pkg: any, idx: number) => {
+            if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
+            if (!pkg.price) errors[`details.packages.${idx}.price`] = "Price is required";
+            if (pkg.equipment && pkg.equipment.length > 0) {
+              pkg.equipment.forEach((eq: any, eqIdx: number) => {
+                if (eq.quantity > eq.quantity_available) {
+                  errors[`details.packages.${idx}.equipment.${eqIdx}.quantity`] = `Default quantity for ${eq.item_name} cannot exceed stock.`;
+                }
+              });
+            }
+          });
+        }
       } else if (type === "decorator") {
         if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
       }
@@ -493,9 +513,36 @@ function AddListingForm() {
       }));
     }
 
+    if (type === "dj" && payload.details.packages) {
+      payload.details.packages = payload.details.packages.map((pkg: any) => ({
+        ...pkg,
+        price: pkg.price ? parseFloat(pkg.price) : 0,
+        hours: parseInt(pkg.hours) || 6,
+        equipment: (pkg.equipment || []).map((eq: any) => ({
+          ...eq,
+          quantity: parseInt(eq.quantity) || 0,
+          quantity_available: parseInt(eq.quantity_available) || 1,
+          unit_price: eq.is_included ? null : (parseFloat(eq.unit_price) || 0)
+        }))
+      }));
+    }
+
     try {
       const response = await api.post("/listings/", payload);
       if (response.status === 201 || response.data.success) {
+        // Upload listing image if provided
+        const listingId = response.data?.data?.id;
+        if (listingId && images.length > 0 && images[0].file) {
+          try {
+            const formData = new FormData();
+            formData.append("image", images[0].file);
+            await api.post(`/listings/${listingId}/image/`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch (imgErr) {
+            console.warn("Image upload failed, listing was still created:", imgErr);
+          }
+        }
         // Success
         router.push("/vendor/listings");
       } else {
@@ -1509,71 +1556,413 @@ function AddListingForm() {
 
           {/* DJ / ENTERTAINMENT DETAIL FORM */}
           {type === "dj" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Standard Sound System & Lights, Grand Wedding DJ Package"
-                  value={detailForm.name}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 font-heading">DJ Package Plans & Pricing</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Build pricing packages (e.g. Standard Sound Setup, Premium Royal DJ) with pricing, occasion types, and equipment inventory loadouts.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
-                  <select
-                    value={detailForm.tier || "medium"}
-                    onChange={(e) => handleDetailChange("tier", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  >
-                    {TIER_CHOICES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
+              <hr className="border-gray-100" />
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Price (per event) (₹)</label>
-                  <input
-                    type="number"
-                    value={detailForm.price}
-                    placeholder="e.g. 25000"
-                    onChange={(e) => handleDetailChange("price", e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                      formErrors["details.price"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                    }`}
-                  />
-                  {formErrors["details.price"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.price"]}</p>}
-                </div>
+              <div className="space-y-6">
+                {detailForm.packages?.map((pkg: any, idx: number) => (
+                  <div key={idx} className="p-5 border border-gray-250 rounded-2xl bg-zinc-50/50 space-y-4 relative animate-fade-in">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-gold font-heading">Package Option #{idx + 1}</h3>
+                      {detailForm.packages.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const list = detailForm.packages.filter((_: any, i: number) => i !== idx);
+                            handleDetailChange("packages", list);
+                          }}
+                          className="bg-red-50 text-red-500 p-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Standard Hours Covered</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={detailForm.hours}
-                    onChange={(e) => handleDetailChange("hours", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  />
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Title</label>
+                        <input
+                          type="text"
+                          value={pkg.name || ""}
+                          placeholder="e.g. Standard Sound System & Lights, Grand Wedding DJ Package"
+                          onChange={(e) => {
+                            const list = [...detailForm.packages];
+                            list[idx].name = e.target.value;
+                            handleDetailChange("packages", list);
+                          }}
+                          className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 ${
+                            formErrors[`details.packages.${idx}.name`] ? "border-red-400" : "border-gray-200"
+                          }`}
+                        />
+                        {formErrors[`details.packages.${idx}.name`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.name`]}</p>}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Service Tier</label>
+                          <select
+                            value={pkg.tier || "medium"}
+                            onChange={(e) => {
+                              const list = [...detailForm.packages];
+                              list[idx].tier = e.target.value;
+                              handleDetailChange("packages", list);
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                          >
+                            {TIER_CHOICES.map((t) => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Setup Theme</label>
+                          <select
+                            value={pkg.theme || "modern"}
+                            onChange={(e) => {
+                              const list = [...detailForm.packages];
+                              list[idx].theme = e.target.value;
+                              handleDetailChange("packages", list);
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                          >
+                            <option value="royal">Royal Theme</option>
+                            <option value="bollywood">Bollywood</option>
+                            <option value="traditional">Traditional</option>
+                            <option value="modern">Modern</option>
+                            <option value="filmy">Filmy</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Package Price (₹)</label>
+                        <input
+                          type="number"
+                          value={pkg.price || ""}
+                          placeholder="e.g. 25000"
+                          onChange={(e) => {
+                            const list = [...detailForm.packages];
+                            list[idx].price = e.target.value;
+                            handleDetailChange("packages", list);
+                          }}
+                          className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 ${
+                            formErrors[`details.packages.${idx}.price`] ? "border-red-400" : "border-gray-200"
+                          }`}
+                        />
+                        {formErrors[`details.packages.${idx}.price`] && <p className="text-[10px] text-red-500 font-semibold">{formErrors[`details.packages.${idx}.price`]}</p>}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Standard Hours Covered</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={pkg.hours || 6}
+                          onChange={(e) => {
+                            const list = [...detailForm.packages];
+                            list[idx].hours = parseInt(e.target.value) || 6;
+                            handleDetailChange("packages", list);
+                          }}
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block font-semibold mb-1">Occasion Types Covered</label>
+                      <div className="flex flex-wrap gap-2">
+                        {["barat", "sangeet", "haldi", "mehndi", "reception", "wedding"].map((occ) => {
+                          const occasions = pkg.occasion_types || [];
+                          const selected = occasions.includes(occ);
+                          return (
+                            <button
+                              key={occ}
+                              type="button"
+                              onClick={() => {
+                                const list = [...detailForm.packages];
+                                const nextOcc = selected
+                                  ? occasions.filter((o: string) => o !== occ)
+                                  : [...occasions, occ];
+                                list[idx].occasion_types = nextOcc;
+                                handleDetailChange("packages", list);
+                              }}
+                              className={`px-3 py-1.5 rounded-xl border text-xs capitalize text-center font-medium transition-all ${
+                                selected
+                                  ? "bg-gold/10 text-gold border-gold font-semibold shadow-sm"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              {occ}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Sound Setup Inclusions Description</label>
+                      <textarea
+                        value={pkg.description || ""}
+                        rows={3}
+                        placeholder="Provide details e.g. 2 dual JBL tops, 2 single bass, LED wash lights, smoke machine, wireless mics etc."
+                        onChange={(e) => {
+                          const list = [...detailForm.packages];
+                          list[idx].description = e.target.value;
+                          handleDetailChange("packages", list);
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold resize-none"
+                      />
+                    </div>
+
+                    {/* Nested Equipment Loadout Manager for this Package */}
+                    <div className="space-y-4 pt-4 border-t border-gray-200/60">
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-900 font-heading">Equipment Loadout & Add-ons for {pkg.name || "this plan"}</h4>
+                        <p className="text-[10px] text-gray-400">Configure what equipment is bundled for free, or chargeable extras for this package.</p>
+                      </div>
+
+                      {/* Inline form to add equipment */}
+                      <div className="p-3.5 border border-gold/15 rounded-xl bg-gold/5/10 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-[#C9A440]/5">
+                        <div className="sm:col-span-3 space-y-1">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Equipment / Item Name</label>
+                          <select
+                            id={`dj-eq-preset-${idx}`}
+                            defaultValue="Sharpy Light"
+                            onChange={(e) => {
+                              const customDiv = document.getElementById(`dj-eq-custom-div-${idx}`);
+                              const customInput = document.getElementById(`dj-eq-custom-name-${idx}`) as HTMLInputElement;
+                              if (customDiv) {
+                                if (e.target.value === "custom") {
+                                  customDiv.classList.remove("hidden");
+                                } else {
+                                  customDiv.classList.add("hidden");
+                                  if (customInput) customInput.value = "";
+                                }
+                              }
+                            }}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                          >
+                            <option value="Sharpy Light">Sharpy Light</option>
+                            <option value="Strobe Light">Strobe Light</option>
+                            <option value="Chhatri Double">Chhatri Double</option>
+                            <option value="Vintage Car">Vintage Car</option>
+                            <option value="Dande Wali Light">Dande Wali Light</option>
+                            <option value="Blender Light">Blender Light</option>
+                            <option value="Sound Tower">Sound Tower</option>
+                            <option value="Generators">Generator</option>
+                            <option value="Smoke Machine">Smoke Machine</option>
+                            <option value="Laser Light">Laser Light</option>
+                            <option value="Truss Setup">Truss Setup</option>
+                            <option value="custom">-- Custom Equipment --</option>
+                          </select>
+                        </div>
+
+                        <div id={`dj-eq-custom-div-${idx}`} className="sm:col-span-3 space-y-1 hidden">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Custom Equipment Name</label>
+                          <input
+                            type="text"
+                            id={`dj-eq-custom-name-${idx}`}
+                            placeholder="e.g. JBL Dual Top"
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Default Qty</label>
+                          <input
+                            type="number"
+                            id={`dj-eq-qty-${idx}`}
+                            min={0}
+                            defaultValue={1}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Total Stock</label>
+                          <input
+                            type="number"
+                            id={`dj-eq-stock-${idx}`}
+                            min={1}
+                            defaultValue={5}
+                            className="w-full border border-gray-250 rounded-lg px-2 py-1.5 text-xs bg-white text-gray-900 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Inclusion</label>
+                          <select
+                            id={`dj-eq-included-${idx}`}
+                            defaultValue="true"
+                            onChange={(e) => {
+                              const priceInput = document.getElementById(`dj-eq-price-${idx}`) as HTMLInputElement;
+                              if (priceInput) {
+                                if (e.target.value === "true") {
+                                  priceInput.disabled = true;
+                                  priceInput.value = "";
+                                } else {
+                                  priceInput.disabled = false;
+                                }
+                              }
+                            }}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none"
+                          >
+                            <option value="true">Included (Free)</option>
+                            <option value="false">Add-on (Chargeable)</option>
+                          </select>
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block">Add-on Price (₹)</label>
+                          <input
+                            type="number"
+                            id={`dj-eq-price-${idx}`}
+                            disabled
+                            placeholder="Free"
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none disabled:bg-gray-100"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-12 md:col-span-1 pt-2 sm:pt-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const presetEl = document.getElementById(`dj-eq-preset-${idx}`) as HTMLSelectElement;
+                              const customEl = document.getElementById(`dj-eq-custom-name-${idx}`) as HTMLInputElement;
+                              const qtyEl = document.getElementById(`dj-eq-qty-${idx}`) as HTMLInputElement;
+                              const stockEl = document.getElementById(`dj-eq-stock-${idx}`) as HTMLInputElement;
+                              const includedEl = document.getElementById(`dj-eq-included-${idx}`) as HTMLSelectElement;
+                              const priceEl = document.getElementById(`dj-eq-price-${idx}`) as HTMLInputElement;
+
+                              const eqName = presetEl.value === "custom" ? customEl.value.trim() : presetEl.value;
+                              if (!eqName) return;
+
+                              const quantity = parseInt(qtyEl.value, 10) || 0;
+                              const quantity_available = parseInt(stockEl.value, 10) || 1;
+                              const is_included = includedEl.value === "true";
+                              const unit_price = is_included ? null : (parseFloat(priceEl.value) || 0);
+
+                              if (quantity > quantity_available) {
+                                alert("Default quantity cannot exceed total stock available.");
+                                return;
+                              }
+
+                              const current = pkg.equipment || [];
+                              if (current.some((eq: any) => eq.item_name.toLowerCase() === eqName.toLowerCase())) {
+                                alert("Item already added. Please delete it first to edit.");
+                                return;
+                              }
+
+                              const newItem = {
+                                item_name: eqName,
+                                quantity,
+                                quantity_available,
+                                is_included,
+                                unit_price
+                              };
+
+                              const list = [...detailForm.packages];
+                              list[idx].equipment = [...current, newItem];
+                              handleDetailChange("packages", list);
+
+                              if (customEl) customEl.value = "";
+                              qtyEl.value = "1";
+                              stockEl.value = "5";
+                              includedEl.value = "true";
+                              priceEl.value = "";
+                              priceEl.disabled = true;
+                              presetEl.value = "Sharpy Light";
+                              const customDiv = document.getElementById(`dj-eq-custom-div-${idx}`);
+                              if (customDiv) customDiv.classList.add("hidden");
+                            }}
+                            className="w-full btn-gold rounded-lg py-1.5 text-xs font-semibold flex items-center justify-center shadow-sm h-[32px] font-heading"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Equipment List Table */}
+                      <div className="border border-gray-150 rounded-xl overflow-hidden shadow-sm bg-white">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-gray-150 text-gray-500 font-semibold">
+                              <th className="p-3">Equipment Name</th>
+                              <th className="p-3 text-center">Default Qty</th>
+                              <th className="p-3 text-center">Total Stock</th>
+                              <th className="p-3 text-center">Status</th>
+                              <th className="p-3 text-center">Add-on Price</th>
+                              <th className="p-3 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!pkg.equipment || pkg.equipment.length === 0) ? (
+                              <tr>
+                                <td colSpan={6} className="p-4 text-center text-gray-400 italic">No equipment loadout configured yet. Add items above.</td>
+                              </tr>
+                            ) : (
+                              pkg.equipment.map((eq: any, eqIdx: number) => (
+                                <tr key={eqIdx} className="border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
+                                  <td className="p-3 font-semibold text-gray-900">{eq.item_name}</td>
+                                  <td className="p-3 text-center">{eq.quantity}</td>
+                                  <td className="p-3 text-center">{eq.quantity_available}</td>
+                                  <td className="p-3 text-center">
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      eq.is_included 
+                                        ? "bg-green-50 text-green-600 border border-green-100" 
+                                        : "bg-amber-50 text-amber-600 border border-amber-100"
+                                    }`}>
+                                      {eq.is_included ? "Included" : "Extra Charge"}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-center font-medium">
+                                    {eq.is_included ? <span className="text-gray-400">-</span> : `₹${eq.unit_price}`}
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const list = [...detailForm.packages];
+                                        list[idx].equipment = pkg.equipment.filter((_: any, i: number) => i !== eqIdx);
+                                        handleDetailChange("packages", list);
+                                      }}
+                                      className="text-red-500 hover:text-red-700 font-semibold"
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">What is included in this Sound setup?</label>
-                <textarea
-                  value={detailForm.description}
-                  rows={4}
-                  placeholder="Provide sound setup details e.g. 2 dual JBL tops, 2 single bass, LED wash lights, smoke machine, wireless mics etc."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const list = [
+                    ...(detailForm.packages || []),
+                    { name: "", tier: "medium", price: "", hours: 6, theme: "modern", occasion_types: ["wedding"], description: "", equipment: [] }
+                  ];
+                  handleDetailChange("packages", list);
+                }}
+                className="w-full border border-dashed border-gray-300 py-3.5 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1 font-heading"
+              >
+                + Create New DJ Package Plan Tier
+              </button>
             </div>
           )}
 

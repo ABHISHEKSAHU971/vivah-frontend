@@ -17,6 +17,7 @@ interface GatedBookingModalProps {
   cateringPackageId?: number | null;
   decorationPackageId?: number | null;
   photographerProfileId?: number | null;
+  customizationDetails?: string;
 }
 
 export default function GatedBookingModal({
@@ -28,6 +29,7 @@ export default function GatedBookingModal({
   cateringPackageId = null,
   decorationPackageId = null,
   photographerProfileId = null
+  customizationDetails = ""
 }: GatedBookingModalProps) {
   // App store auth & fields
   const storeToken = useStore((s) => s.token);
@@ -201,7 +203,11 @@ export default function GatedBookingModal({
   };
 
   const submitFinalInquiry = (e164Phone: string, userName: string) => {
-    const formattedMessage = `Individual ${serviceType.toUpperCase()} booking inquiry for ${vendorName}. Guest Count: ${formData.guestCount || 150}, Event Date: ${formData.eventDate || "Not Specified"}.`;
+    let formattedMessage = `Individual ${serviceType.toUpperCase()} booking inquiry for ${vendorName}. Guest Count: ${formData.guestCount || 150}, Event Date: ${formData.eventDate || "Not Specified"}.`;
+
+    if (customizationDetails) {
+      formattedMessage += `\n\nCustom Setup details:\n${customizationDetails}`;
+    }
 
     if (serviceType === "photographer") {
       const payload = {
