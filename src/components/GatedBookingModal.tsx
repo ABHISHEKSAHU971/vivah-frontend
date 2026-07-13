@@ -13,9 +13,10 @@ interface GatedBookingModalProps {
   onClose: () => void;
   onSuccess: () => void;
   vendorName: string;
-  serviceType: "catering" | "decorator" | "dj";
+  serviceType: "catering" | "decorator" | "dj" | "photographer";
   cateringPackageId?: number | null;
   decorationPackageId?: number | null;
+  photographerProfileId?: number | null;
   customizationDetails?: string;
 }
 
@@ -27,6 +28,7 @@ export default function GatedBookingModal({
   serviceType,
   cateringPackageId = null,
   decorationPackageId = null,
+  photographerProfileId = null
   customizationDetails = ""
 }: GatedBookingModalProps) {
   // App store auth & fields
@@ -72,12 +74,19 @@ export default function GatedBookingModal({
 
     // If verified, prefill Name/Phone from store/Zustand if available
     if (verified) {
-      setFormData((prev) => ({
-        ...prev,
-        name: storeUser?.full_name || prev.name || "Customer",
-        phone: storeUser?.phone || storeOnboardingPhone || prev.phone,
-        guestCount: prev.guestCount || String(storeOnboardingGuests || "150")
-      }));
+      setFormData((prev) => {
+        const rawPhone = storeUser?.phone || storeOnboardingPhone || prev.phone || "";
+        let cleanPhone = rawPhone.replace(/\D/g, "");
+        if (cleanPhone.startsWith("91") && cleanPhone.length === 12) {
+          cleanPhone = cleanPhone.slice(2);
+        }
+        return {
+          ...prev,
+          name: storeUser?.full_name || prev.name || "Customer",
+          phone: cleanPhone,
+          guestCount: prev.guestCount || String(storeOnboardingGuests || "150")
+        };
+      });
     }
   }, [storeToken, storeRole, storeUser, storeOnboardingPhone, storeOnboardingGuests, isOpen]);
 
@@ -200,6 +209,33 @@ export default function GatedBookingModal({
       formattedMessage += `\n\nCustom Setup details:\n${customizationDetails}`;
     }
 
+    if (serviceType === "photographer") {
+      const payload = {
+        photographer: photographerProfileId,
+        event_city: "Indore",
+        guest_count: Number(formData.guestCount || 150),
+        requirements: formattedMessage,
+        events: formData.eventDate ? [
+          {
+            event_type: "Wedding",
+            event_date: formData.eventDate,
+            city: "Indore"
+          }
+        ] : []
+      };
+
+      api.post("/photographers/inquiries/", payload)
+        .then(() => {
+          onSuccess();
+          onClose();
+        })
+        .catch((err) => {
+          setModalError("Failed to submit photography inquiry. Please try again.");
+          console.error(err);
+        });
+      return;
+    }
+
     submitInquiryMutation.mutate(
       {
         name: userName,
@@ -230,7 +266,10 @@ export default function GatedBookingModal({
       setModalError("Please enter your name.");
       return;
     }
-    const cleanPhone = formData.phone.replace(/\D/g, "");
+    let cleanPhone = formData.phone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("91") && cleanPhone.length === 12) {
+      cleanPhone = cleanPhone.slice(2);
+    }
     if (cleanPhone.length !== 10) {
       setModalError("Please enter a valid 10-digit mobile number.");
       return;
@@ -393,8 +432,7 @@ export default function GatedBookingModal({
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="John Doe"
-                    disabled={isVerified && !!storeUser?.full_name}
-                    className="w-full bg-transparent pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none disabled:text-gray-400"
+                    className="w-full bg-transparent pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none"
                   />
                 </div>
               </div>
@@ -411,8 +449,7 @@ export default function GatedBookingModal({
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "") })}
                     placeholder="98765 43210"
-                    disabled={isVerified}
-                    className="w-full bg-transparent pl-20 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none disabled:text-gray-400"
+                    className="w-full bg-transparent pl-20 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none"
                   />
                 </div>
               </div>
