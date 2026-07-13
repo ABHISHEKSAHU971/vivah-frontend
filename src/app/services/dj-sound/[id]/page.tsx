@@ -10,6 +10,7 @@ import {
   Sparkles, Star, Play, ChevronRight, CheckCircle2 
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
 
@@ -143,6 +144,23 @@ export default function DjCustomizerPage() {
   // Checkout Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Fetch vendor profile details for DJ
+  const { data: dbVendors } = useQuery({
+    queryKey: ["approvedDjs"],
+    queryFn: () => vendorApi.listApprovedVendors("dj"),
+  });
+
+  const djVendor = dbVendors?.find((v: any) => v.id === vendorId);
+
+  const getImageUrl = (url: string | null | undefined) => {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+    return `http://localhost:8000${cleanUrl}`;
+  };
 
   // 1. Fetch live DJ packages for this vendor
   const { data: dbPackages, isLoading } = useQuery({
@@ -279,11 +297,10 @@ export default function DjCustomizerPage() {
                 {/* Showcase Media Card */}
                 <div className="bg-[#0F1E35]/30 border border-[#C9A440]/15 rounded-2xl overflow-hidden shadow-2xl relative">
                   <div className="relative h-96 w-full bg-slate-950">
-                    <Image
-                      src={themeData.img}
+                    <img
+                      src={getImageUrl(activePackage?.listing_image) || getImageUrl(djVendor?.logo) || themeData.img}
                       alt={themeData.title}
-                      fill
-                      className="object-cover opacity-85 transition-all duration-500"
+                      className="object-cover opacity-85 w-full h-full transition-all duration-500"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#050D1A] via-transparent to-transparent" />
                     
@@ -375,6 +392,11 @@ export default function DjCustomizerPage() {
                 
                 {/* Title and Tier */}
                 <div className="space-y-2">
+                  {djVendor && (
+                    <div className="text-[#C9A440] text-xs font-semibold uppercase tracking-widest font-heading">
+                      Presented by {djVendor.business_name}
+                    </div>
+                  )}
                   <span className="inline-block bg-[#C9A440]/10 border border-[#C9A440]/35 text-[#C9A440] text-[10px] font-bold tracking-wider px-3 py-1 rounded-full uppercase">
                     Tier: {activePackage?.tier || "Standard Vibe"}
                   </span>
@@ -530,7 +552,7 @@ export default function DjCustomizerPage() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSuccess={() => setSuccess(true)}
-          vendorName={activePackage?.name || "DJ Partner"}
+          vendorName={djVendor?.business_name || activePackage?.name || "DJ Partner"}
           serviceType="dj"
           customizationDetails={getCustomizationDetails()}
         />
