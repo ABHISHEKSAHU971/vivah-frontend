@@ -309,8 +309,15 @@ function EditListingForm() {
     } else if (currentStep === 2) {
       // Validate service fields based on type
       if (type === "photographer") {
-        if (!detailForm.base_package_price) errors["details.base_package_price"] = "Price is required";
-        if (detailForm.photography_types?.length === 0) errors["details.photography_types"] = "Select at least one photography type";
+        if (!detailForm.services || detailForm.services.length === 0) {
+          errors["details.photography_types"] = "Select at least one photography type";
+        } else {
+          detailForm.services.forEach((s: any, idx: number) => {
+            if (!s.price_per_day) {
+              errors[`details.services.${idx}.price_per_day`] = "Price per day is required";
+            }
+          });
+        }
       } else if (type === "makeup") {
         if (!detailForm.bridal_package_price) errors["details.bridal_package_price"] = "Bridal price is required";
         if (!detailForm.party_makeup_price) errors["details.party_makeup_price"] = "Party makeup price is required";
@@ -363,7 +370,17 @@ function EditListingForm() {
     };
 
     // Convert decimal strings to numbers for serialization safety
-    if (payload.details.base_package_price) payload.details.base_package_price = parseFloat(payload.details.base_package_price);
+    if (type === "photographer" && payload.details.services) {
+      payload.details.services = payload.details.services.map((s: any) => ({
+        ...s,
+        price_per_day: parseFloat(s.price_per_day) || 0,
+        discount: parseFloat(s.discount) || 0
+      }));
+      const prices = payload.details.services.map((s: any) => s.price_per_day).filter((p: number) => p > 0);
+      payload.details.base_package_price = prices.length > 0 ? Math.min(...prices) : 0;
+    } else if (payload.details.base_package_price) {
+      payload.details.base_package_price = parseFloat(payload.details.base_package_price);
+    }
     if (payload.details.bridal_package_price) payload.details.bridal_package_price = parseFloat(payload.details.bridal_package_price);
     if (payload.details.party_makeup_price) payload.details.party_makeup_price = parseFloat(payload.details.party_makeup_price);
     if (payload.details.budget_min) payload.details.budget_min = parseFloat(payload.details.budget_min);
@@ -806,67 +823,117 @@ function EditListingForm() {
           {/* PHOTOGRAPHER */}
           {type === "photographer" && (
             <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Photography Specialties Offered</label>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {PHOTOGRAPHY_TYPES.map((specialty) => {
-                    const selected = detailForm.photography_types?.includes(specialty);
-                    return (
-                      <button
-                        key={specialty}
-                        type="button"
-                        onClick={() => toggleArrayItem("photography_types", specialty)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs capitalize transition-all ${
-                          selected 
-                            ? "bg-gold/10 text-gold border-gold font-semibold" 
-                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        {specialty} Photo/Film
-                      </button>
-                    );
-                  })}
-                </div>
-                {formErrors["details.photography_types"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.photography_types"]}</p>}
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Photographer Services Pricing & Discounts</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentServices = detailForm.services || [];
+                    const newServices = [
+                      ...currentServices,
+                      { name: "Traditional Photographer", price_per_day: "1000", discount: "0.0" }
+                    ];
+                    setDetailForm({
+                      ...detailForm,
+                      services: newServices,
+                      photography_types: newServices.map((s: any) => s.name.toLowerCase().replace(/\s+/g, '-'))
+                    });
+                  }}
+                  style={{ backgroundColor: 'var(--gold)', color: '#0A192F' }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-all flex items-center gap-1 shadow-sm"
+                >
+                  + Add Service Row
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Crew size</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={detailForm.team_size || ""}
-                    onChange={(e) => handleDetailChange("team_size", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Base Package Cost (₹)</label>
-                  <input
-                    type="number"
-                    value={detailForm.base_package_price || ""}
-                    placeholder="e.g. 50000"
-                    onChange={(e) => handleDetailChange("base_package_price", e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                      formErrors["details.base_package_price"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                    }`}
-                  />
-                  {formErrors["details.base_package_price"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.base_package_price"]}</p>}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Delivery Lead Time (Days)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={detailForm.delivery_days_limit || ""}
-                    onChange={(e) => handleDetailChange("delivery_days_limit", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                  />
-                </div>
+              <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
+                      <th className="px-4 py-3">Service Name</th>
+                      <th className="px-4 py-3">Price Per Day (₹)</th>
+                      <th className="px-4 py-3">Discount Per Day (%)</th>
+                      <th className="px-4 py-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {(!detailForm.services || detailForm.services.length === 0) ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-xs text-gray-400">
+                          No services added yet. Click "+ Add Service Row" to configure pricing.
+                        </td>
+                      </tr>
+                    ) : (
+                      detailForm.services.map((service: any, index: number) => (
+                        <tr key={index} className="hover:bg-gray-50/30">
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="text"
+                              value={service.name}
+                              placeholder="e.g. Traditional Videographer"
+                              onChange={(e) => {
+                                const updated = [...detailForm.services];
+                                updated[index].name = e.target.value;
+                                setDetailForm({
+                                  ...detailForm,
+                                  services: updated,
+                                  photography_types: updated.map((s: any) => s.name.toLowerCase().replace(/\s+/g, '-'))
+                                });
+                              }}
+                              className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900 font-medium"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="number"
+                              min={0}
+                              value={service.price_per_day}
+                              onChange={(e) => {
+                                const updated = [...detailForm.services];
+                                updated[index].price_per_day = e.target.value;
+                                handleDetailChange("services", updated);
+                              }}
+                              className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.5}
+                              value={service.discount}
+                              onChange={(e) => {
+                                const updated = [...detailForm.services];
+                                updated[index].discount = e.target.value;
+                                handleDetailChange("services", updated);
+                              }}
+                              className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = detailForm.services.filter((_: any, i: number) => i !== index);
+                                setDetailForm({
+                                  ...detailForm,
+                                  services: updated,
+                                  photography_types: updated.map((s: any) => s.name.toLowerCase().replace(/\s+/g, '-'))
+                                });
+                              }}
+                              className="text-red-500 hover:text-red-700 transition-all font-semibold text-xs"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
+              {formErrors["details.photography_types"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.photography_types"]}</p>}
             </div>
           )}
 
@@ -875,7 +942,7 @@ function EditListingForm() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Bridal Makeup Package (₹)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Bridal Makeup Price (₹)</label>
                   <input
                     type="number"
                     value={detailForm.bridal_package_price || ""}
@@ -939,6 +1006,138 @@ function EditListingForm() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Bridal Makeup Tiers Table */}
+              <div className="space-y-4 pt-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Bridal Makeup Package Tiers (Silver, Gold, Platinum)</label>
+                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
+                        <th className="px-4 py-3 w-1/4">Package Tier</th>
+                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
+                        <th className="px-4 py-3 w-1/2">Inclusions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {["Silver", "Gold", "Platinum"].map((tierName) => {
+                        const currentPackages = detailForm.packages || [];
+                        let pkg = currentPackages.find((p: any) => p.name === tierName && p.category === "bridal");
+                        if (!pkg) {
+                          pkg = { name: tierName, price: "", inclusions: "", category: "bridal" };
+                        }
+                        return (
+                          <tr key={tierName} className="hover:bg-gray-50/30">
+                            <td className="px-4 py-3 font-semibold text-gray-700">{tierName}</td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                placeholder={`e.g. ${tierName === "Silver" ? "10000" : tierName === "Gold" ? "20000" : "35000"}`}
+                                value={pkg.price || ""}
+                                onChange={(e) => {
+                                  const nextPackages = [...(detailForm.packages || [])];
+                                  const idx = nextPackages.findIndex((p: any) => p.name === tierName && p.category === "bridal");
+                                  if (idx > -1) {
+                                    nextPackages[idx].price = e.target.value;
+                                  } else {
+                                    nextPackages.push({ name: tierName, price: e.target.value, inclusions: "", category: "bridal" });
+                                  }
+                                  handleDetailChange("packages", nextPackages);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                placeholder={`e.g. ${tierName === "Silver" ? "HD Bridal Makeup, Styling" : tierName === "Gold" ? "Airbrush Makeup, Hair Styling, Draping" : "Premium Global Makeup Artist, Trial Session, Draping, Luxury Styling"}`}
+                                value={pkg.inclusions || ""}
+                                onChange={(e) => {
+                                  const nextPackages = [...(detailForm.packages || [])];
+                                  const idx = nextPackages.findIndex((p: any) => p.name === tierName && p.category === "bridal");
+                                  if (idx > -1) {
+                                    nextPackages[idx].inclusions = e.target.value;
+                                  } else {
+                                    nextPackages.push({ name: tierName, price: "", inclusions: e.target.value, category: "bridal" });
+                                  }
+                                  handleDetailChange("packages", nextPackages);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Groom Makeup Tiers Table */}
+              <div className="space-y-4 pt-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Groom Makeup Package Tiers (Silver, Gold, Platinum)</label>
+                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
+                        <th className="px-4 py-3 w-1/4">Package Tier</th>
+                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
+                        <th className="px-4 py-3 w-1/2">Inclusions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {["Silver", "Gold", "Platinum"].map((tierName) => {
+                        const currentPackages = detailForm.packages || [];
+                        let pkg = currentPackages.find((p: any) => p.name === tierName && p.category === "groom");
+                        if (!pkg) {
+                          pkg = { name: tierName, price: "", inclusions: "", category: "groom" };
+                        }
+                        return (
+                          <tr key={tierName} className="hover:bg-gray-50/30">
+                            <td className="px-4 py-3 font-semibold text-gray-700">{tierName}</td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                placeholder={`e.g. ${tierName === "Silver" ? "5000" : tierName === "Gold" ? "10000" : "18000"}`}
+                                value={pkg.price || ""}
+                                onChange={(e) => {
+                                  const nextPackages = [...(detailForm.packages || [])];
+                                  const idx = nextPackages.findIndex((p: any) => p.name === tierName && p.category === "groom");
+                                  if (idx > -1) {
+                                    nextPackages[idx].price = e.target.value;
+                                  } else {
+                                    nextPackages.push({ name: tierName, price: e.target.value, inclusions: "", category: "groom" });
+                                  }
+                                  handleDetailChange("packages", nextPackages);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                placeholder={`e.g. ${tierName === "Silver" ? "Basic grooming, hair set" : tierName === "Gold" ? "HD Groom Makeup, beard styling, hair setting" : "Premium Groom Makeup, tan removal, beard & hair styling"}`}
+                                value={pkg.inclusions || ""}
+                                onChange={(e) => {
+                                  const nextPackages = [...(detailForm.packages || [])];
+                                  const idx = nextPackages.findIndex((p: any) => p.name === tierName && p.category === "groom");
+                                  if (idx > -1) {
+                                    nextPackages[idx].inclusions = e.target.value;
+                                  } else {
+                                    nextPackages.push({ name: tierName, price: "", inclusions: e.target.value, category: "groom" });
+                                  }
+                                  handleDetailChange("packages", nextPackages);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1329,6 +1528,77 @@ function EditListingForm() {
                       }
                     }}
                   />
+                </div>
+              </div>
+
+              {/* Decoration Tiers Table */}
+              <div className="space-y-4 pt-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Tiers (Pricing & Descriptions)</label>
+                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
+                        <th className="px-4 py-3 w-1/4">Tier</th>
+                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
+                        <th className="px-4 py-3 w-1/2">Inclusions & Area Specs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {[
+                        { key: "low", label: "Silver (Budget)" },
+                        { key: "medium", label: "Gold (Standard)" },
+                        { key: "average", label: "Platinum (Premium)" },
+                        { key: "high", label: "Luxury (High)" }
+                      ].map(({ key, label }) => {
+                        const currentTiers = detailForm.tiers || [];
+                        let tierData = currentTiers.find((t: any) => t.tier === key);
+                        if (!tierData) {
+                          tierData = { tier: key, price: "", description: "" };
+                        }
+                        return (
+                          <tr key={key} className="hover:bg-gray-50/30">
+                            <td className="px-4 py-3 font-semibold text-gray-700">{label}</td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                placeholder={`e.g. ${key === "low" ? "15000" : key === "medium" ? "30000" : key === "average" ? "60000" : "120000"}`}
+                                value={tierData.price || ""}
+                                onChange={(e) => {
+                                  const nextTiers = [...(detailForm.tiers || [])];
+                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
+                                  if (idx > -1) {
+                                    nextTiers[idx].price = e.target.value;
+                                  } else {
+                                    nextTiers.push({ tier: key, price: e.target.value, description: "" });
+                                  }
+                                  handleDetailChange("tiers", nextTiers);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                placeholder={`e.g. ${key === "low" ? "Standard entrance and stage backdrop (up to 400 sqft)" : key === "medium" ? "Entrance arch, stage backdrop, 10 table centerpieces (up to 800 sqft)" : "Luxury floral entry, premium stage draping, 20 centerpieces, pathway lighting"}`}
+                                value={tierData.description || ""}
+                                onChange={(e) => {
+                                  const nextTiers = [...(detailForm.tiers || [])];
+                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
+                                  if (idx > -1) {
+                                    nextTiers[idx].description = e.target.value;
+                                  } else {
+                                    nextTiers.push({ tier: key, price: "", description: e.target.value });
+                                  }
+                                  handleDetailChange("tiers", nextTiers);
+                                }}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

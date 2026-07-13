@@ -14,7 +14,7 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { label: "Venues", href: "/venues" },
-  { label: "Services", href: "/services", sub: ["Catering", "Decorations", "DJ & Sound"] },
+  { label: "Services", href: "/services", sub: ["Catering", "Decorations", "DJ & Sound", "Photography", "Makeup"] },
   { label: "AI Planner", href: null, badge: "Coming Soon" },
   { label: "Vendors", href: "/vendor/login" },
 ];
