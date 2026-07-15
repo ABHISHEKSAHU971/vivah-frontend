@@ -13,7 +13,7 @@ interface GatedBookingModalProps {
   onClose: () => void;
   onSuccess: () => void;
   vendorName: string;
-  serviceType: "catering" | "decorator" | "dj" | "photographer";
+  serviceType: "catering" | "decorator" | "dj" | "photographer" | "makeup";
   cateringPackageId?: number | null;
   decorationPackageId?: number | null;
   photographerProfileId?: number | null;
@@ -28,7 +28,7 @@ export default function GatedBookingModal({
   serviceType,
   cateringPackageId = null,
   decorationPackageId = null,
-  photographerProfileId = null
+  photographerProfileId = null,
   customizationDetails = ""
 }: GatedBookingModalProps) {
   // App store auth & fields

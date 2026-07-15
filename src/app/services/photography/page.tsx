@@ -8,6 +8,7 @@ import { Camera, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
+import { getImageUrl } from "@/lib/api";
 
 const MOCK_PHOTOGRAPHERS = [
   { 
@@ -89,7 +90,7 @@ export default function PhotographyPage() {
           price: startingPrice,
           rating: "4.8",
           gear: servicesList.slice(0, 4),
-          image: v.logo || "https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600&q=80",
+          image: getImageUrl(v.logo) || "https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600&q=80",
           city: photoProf?.city || v.city,
           photographerProfileId: photoProf?.id || null,
         };
@@ -130,12 +131,10 @@ export default function PhotographyPage() {
               {photographers.map((photographer) => (
                 <div key={photographer.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm flex flex-col h-full hover:shadow-md transition-all">
                   <div className="relative h-56 w-full">
-                    <Image
+                    <img
                       src={photographer.image}
                       alt={photographer.name}
-                      fill
-                      className="object-cover"
-                      unoptimized
+                      className="absolute inset-0 w-full h-full object-cover"
                     />
                     <div className="absolute top-4 left-4 bg-white/95 px-2.5 py-1 rounded text-xs font-semibold text-gray-800 shadow-sm">
                       {photographer.type}

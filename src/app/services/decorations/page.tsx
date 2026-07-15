@@ -108,7 +108,7 @@ export default function DecorationsPage() {
                       <div className="space-y-2">
                         <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Packages Include</p>
                         <div className="flex flex-wrap gap-2">
-                          {d.packages.map((pkg, idx) => (
+                          {d.packages.map((pkg: string, idx: number) => (
                             <span key={idx} className="bg-zinc-50 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-100 flex items-center gap-1">
                               <Check size={10} className="text-amber-500" /> {pkg}
                             </span>

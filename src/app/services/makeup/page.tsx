@@ -8,6 +8,7 @@ import { Sparkles, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
+import { getImageUrl } from "@/lib/api";
 
 const MOCK_MAKEUP_ARTISTS = [
   { 
@@ -72,7 +73,7 @@ export default function MakeupPage() {
           brands: details.brands_used && details.brands_used.length > 0 ? details.brands_used : ["MAC", "Huda Beauty"],
           bridalPackages: bridalPkgs.length > 0 ? bridalPkgs : ["Silver: Professional HD Makeup", "Gold: Airbrush Makeup & Styling", "Platinum: Trial + Luxury Bridal Makeover"],
           groomPackages: groomPkgs.length > 0 ? groomPkgs : ["Silver: Basic Grooming & Styling", "Gold: HD Groom Makeup", "Platinum: Premium Groom Makeover & Hair Set"],
-          image: v.logo || "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=600&q=80",
+          image: getImageUrl(v.logo) || "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=600&q=80",
           city: v.city,
         };
       })
@@ -112,12 +113,10 @@ export default function MakeupPage() {
               {artists.map((artist) => (
                 <div key={artist.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm flex flex-col h-full hover:shadow-md transition-all">
                   <div className="relative h-56 w-full">
-                    <Image
+                    <img
                       src={artist.image}
                       alt={artist.name}
-                      fill
-                      className="object-cover"
-                      unoptimized
+                      className="absolute inset-0 w-full h-full object-cover"
                     />
                     <div className="absolute top-4 left-4 bg-white/95 px-2.5 py-1 rounded text-xs font-semibold text-gray-800 shadow-sm">
                       {artist.type}
@@ -139,7 +138,7 @@ export default function MakeupPage() {
                       <div className="space-y-1">
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Brands Customarily Used</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {artist.brands.map((b, i) => (
+                          {artist.brands.map((b: string, i: number) => (
                             <span key={i} className="bg-slate-50 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-gray-100">{b}</span>
                           ))}
                         </div>
@@ -149,7 +148,7 @@ export default function MakeupPage() {
                         <div className="space-y-1.5">
                           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Bridal Packages</p>
                           <div className="space-y-1">
-                            {artist.bridalPackages.map((pkg, idx) => (
+                            {artist.bridalPackages.map((pkg: string, idx: number) => (
                               <div key={idx} className="flex items-start gap-2 text-xs text-gray-700 font-medium">
                                 <Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />
                                 <span>{pkg}</span>
@@ -161,7 +160,7 @@ export default function MakeupPage() {
                         <div className="space-y-1.5">
                           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Groom Packages</p>
                           <div className="space-y-1">
-                            {artist.groomPackages.map((pkg, idx) => (
+                            {artist.groomPackages.map((pkg: string, idx: number) => (
                               <div key={idx} className="flex items-start gap-2 text-xs text-gray-700 font-medium">
                                 <Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />
                                 <span>{pkg}</span>
