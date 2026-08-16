@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Utensils, Paintbrush, Music } from "lucide-react";
+import { ArrowRight, Utensils, Paintbrush, Music, Camera } from "lucide-react";
 
 const SERVICES = [
   {
@@ -27,6 +27,14 @@ const SERVICES = [
     link: "/services/dj-sound",
     icon: Music,
     image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80"
+  },
+  {
+    title: "Wedding Photography",
+    description: "Hire premium wedding cinematographers, drone pilots, and fine art candid photographers.",
+    tag: "Candid, Cinematic & Albums",
+    link: "/services/photography",
+    icon: Camera,
+    image: "https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600&q=80"
   }
 ];
 
@@ -43,12 +51,12 @@ export default function MarketplaceServices() {
             <em style={{ color: "var(--gold)", fontStyle: "italic" }}>personally</em> selected.
           </h2>
           <p className="text-gray-500 mt-4 max-w-lg">
-            Complete your planning by matching with pre-vetted specialists in catering, decoration, and DJ entertainment, each fully customisable to your functions.
+            Complete your planning by matching with pre-vetted specialists in catering, decoration, photography, and DJ entertainment, each fully customisable to your functions.
           </p>
         </div>
 
         {/* Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {SERVICES.map((srv, idx) => {
             const Icon = srv.icon;
             return (

@@ -18,7 +18,7 @@ const MOCK_DECORATORS = [
 export default function DecorationsPage() {
   const [success, setSuccess] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDecorator, setSelectedDecorator] = useState<{ id: number; name: string } | null>(null);
+  const [selectedDecorator, setSelectedDecorator] = useState<{ id: number; name: string; decorationPackageId: number | null } | null>(null);
 
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedDecorators"],
@@ -26,22 +26,35 @@ export default function DecorationsPage() {
   });
 
   const decorators = (dbVendors && dbVendors.length > 0)
-    ? dbVendors.map((v) => ({
-        id: v.id,
-        name: v.business_name,
-        type: v.vendor_type || "Decoration Specialist",
-        price_range: "75,000 - 3,00,000",
-        rating: "4.8",
-        packages: v.description 
-          ? v.description.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3) 
-          : ["Mandap Decoration", "Reception Stage", "Lighting Design"],
-        image: getImageUrl(v.logo) || "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&q=80",
-        city: v.city,
-      }))
+    ? dbVendors.map((v) => {
+        const details = v.details || {};
+        const prices = details.tiers?.map((t: any) => parseFloat(t.price)).filter((p: number) => !isNaN(p)) || [];
+        const minPrice = prices.length > 0 ? Math.min(...prices) : 30000;
+        const priceRange = prices.length > 0 ? `Starting from ₹${minPrice.toLocaleString("en-IN")}` : "₹75,000 - 3,00,000";
+        const inclusions = details.includes && details.includes.length > 0 
+          ? details.includes 
+          : ["Mandap Decoration", "Reception Stage", "Lighting Design"];
+
+        return {
+          id: v.id,
+          name: details.name || v.business_name || v.name,
+          type: "Decoration Specialist",
+          price_range: priceRange,
+          rating: "4.8",
+          packages: inclusions.slice(0, 3),
+          image: v.logo || "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&q=80",
+          city: v.city,
+          decorationPackageId: details.id || null,
+        };
+      })
     : MOCK_DECORATORS;
 
   const handleBookClick = (decorator: any) => {
-    setSelectedDecorator({ id: decorator.id, name: decorator.name });
+    setSelectedDecorator({ 
+      id: decorator.id, 
+      name: decorator.name,
+      decorationPackageId: decorator.decorationPackageId
+    });
     setIsModalOpen(true);
   };
 
@@ -95,7 +108,7 @@ export default function DecorationsPage() {
                       <div className="space-y-2">
                         <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Packages Include</p>
                         <div className="flex flex-wrap gap-2">
-                          {d.packages.map((pkg, idx) => (
+                          {d.packages.map((pkg: string, idx: number) => (
                             <span key={idx} className="bg-zinc-50 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-100 flex items-center gap-1">
                               <Check size={10} className="text-amber-500" /> {pkg}
                             </span>
@@ -133,7 +146,7 @@ export default function DecorationsPage() {
           onSuccess={() => setSuccess(selectedDecorator.id)}
           vendorName={selectedDecorator.name}
           serviceType="decorator"
-          decorationPackageId={selectedDecorator.id < 100 ? selectedDecorator.id : null}
+          decorationPackageId={selectedDecorator.decorationPackageId}
         />
       )}
     </>

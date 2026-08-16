@@ -1,49 +1,55 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Star, TrendingUp, Users, DollarSign, Calendar, Loader2, AlertCircle, Phone, Mail, ChevronDown, ChevronUp } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Star, Users, DollarSign, Calendar, Loader2, AlertCircle, CheckCircle, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 
-interface Lead {
+interface ConfirmedBooking {
   id: number;
-  name: string;
-  phone: string;
-  email: string | null;
-  location: string;
-  event_date: string | null;
-  event_type: string | null;
-  guest_count: number | null;
-  message: string;
+  venue: number;
+  venue_name: string;
+  customer: number;
+  customer_name: string;
+  customer_phone: string;
+  event_date: string;
+  session: string;
+  guest_count: number;
+  event_type: string;
+  total_amount: string;
+  advance_paid: string;
+  balance_due: string;
   status: string;
   created_at: string;
 }
 
 export default function VendorDashboard() {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const router = useRouter();
+  const [bookings, setBookings] = useState<ConfirmedBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null);
 
   useEffect(() => {
-    api.get("/venues/venue-inquiries/")
+    api.get("/bookings/vendor/bookings/")
       .then((res) => {
-        // Handle DRF success response structure or paginated standard results
-        const data = res.data.results || res.data.data?.results || res.data.data || res.data || [];
-        setLeads(data);
+        const data = res.data.data?.bookings || res.data.bookings || res.data.results || res.data || [];
+        setBookings(data);
       })
       .catch((err) => {
-        console.error("[fetch dashboard leads error]", err);
+        console.error("[fetch vendor bookings error]", err);
         const serverMsg = err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error;
-        setError(serverMsg || "Could not retrieve incoming celebration leads.");
+        setError(serverMsg || "Could not retrieve confirmed bookings.");
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const totalEarnings = bookings.reduce((sum, b) => sum + (parseFloat(b.total_amount) || 0), 0);
 
   return (
     <div className="space-y-8 font-body">
       <div>
         <h1 className="text-2xl font-heading font-semibold text-gray-900">Partner Console Dashboard</h1>
-        <p className="text-xs text-gray-400 mt-1">Review bookings, performance stats, and active leads</p>
+        <p className="text-xs text-gray-400 mt-1">Review confirmed venue bookings and event schedules</p>
       </div>
 
       <hr className="border-gray-100" />
@@ -52,9 +58,9 @@ export default function VendorDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
           { label: "Active Listings", val: "2", icon: Star, color: "text-amber-500 bg-amber-50" },
-          { label: "Total Bookings", val: "142", icon: Calendar, color: "text-blue-500 bg-blue-50" },
-          { label: "Total Capacity", val: "800", icon: Users, color: "text-emerald-500 bg-emerald-50" },
-          { label: "Est. Earnings", val: "₹12.4L", icon: DollarSign, color: "text-purple-500 bg-purple-50" },
+          { label: "Confirmed Bookings", val: String(bookings.length), icon: Calendar, color: "text-blue-500 bg-blue-50" },
+          { label: "Total Guests Covered", val: String(bookings.reduce((sum, b) => sum + (b.guest_count || 0), 0)), icon: Users, color: "text-emerald-500 bg-emerald-50" },
+          { label: "Total Booked Revenue", val: `\u20b9${(totalEarnings / 100000).toFixed(1)}L`, icon: DollarSign, color: "text-purple-500 bg-purple-50" },
         ].map((s, idx) => {
           const Icon = s.icon;
           return (
@@ -71,153 +77,94 @@ export default function VendorDashboard() {
         })}
       </div>
 
-      {/* Leads Table */}
+      {/* Confirmed Bookings Table */}
       <div className="space-y-3">
         <h3 className="font-heading font-semibold text-lg text-gray-900 flex items-center gap-1.5">
-          <TrendingUp size={16} className="text-gold" /> Incoming Celebration Leads
+          <CheckCircle size={18} className="text-emerald-600" /> Confirmed Event Bookings
         </h3>
 
         {loading ? (
           <div className="border border-gray-100 rounded-xl p-8 flex flex-col items-center justify-center gap-2 text-gray-400 bg-white shadow-sm">
-            <Loader2 size={24} className="animate-spin text-gold" />
-            <p className="text-xs">Loading celebration inquiries...</p>
+            <Loader2 size={24} className="animate-spin text-emerald-600" />
+            <p className="text-xs">Loading confirmed venue bookings...</p>
           </div>
         ) : error ? (
           <div className="border border-red-100 bg-red-50/50 rounded-xl p-4 flex items-start gap-2.5 text-xs text-red-700">
             <AlertCircle size={16} className="shrink-0 text-red-500 mt-0.5" />
             <div>
-              <p className="font-bold">Error loading inquiries</p>
+              <p className="font-bold">Error loading bookings</p>
               <p className="mt-0.5">{error}</p>
             </div>
           </div>
-        ) : leads.length === 0 ? (
+        ) : bookings.length === 0 ? (
           <div className="border border-gray-150 border-dashed rounded-2xl p-12 text-center bg-zinc-50/30">
-            <TrendingUp size={36} className="mx-auto text-zinc-300 mb-2" />
-            <h4 className="text-sm font-semibold text-gray-900">No leads registered yet</h4>
-            <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">When customers submit bookings or customize catering packages on your listings, they will show up here.</p>
+            <Calendar size={36} className="mx-auto text-zinc-300 mb-2" />
+            <h4 className="text-sm font-semibold text-gray-900">No confirmed bookings yet</h4>
+            <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+              When the PlanMyVivah team confirms customer bookings for your venue, they will appear here.
+            </p>
           </div>
         ) : (
           <div className="border border-gray-150 rounded-xl overflow-hidden shadow-sm bg-white">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-zinc-50 text-gray-500 border-b border-gray-100">
-                  <th className="p-3 font-semibold">Lead Contact</th>
-                  <th className="p-3 font-semibold">Date Received</th>
+                  <th className="p-3 font-semibold">Booked Date</th>
+                  <th className="p-3 font-semibold">Venue Name</th>
+                  <th className="p-3 font-semibold">Customer Details</th>
                   <th className="p-3 font-semibold">Guest Size</th>
+                  <th className="p-3 font-semibold">Total Amount</th>
+                  <th className="p-3 font-semibold">Balance Due</th>
                   <th className="p-3 font-semibold">Status</th>
                   <th className="p-3 font-semibold text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {leads.map((lead) => {
-                  const isExpanded = expandedLeadId === lead.id;
-                  return (
-                    <tr key={lead.id} className="hover:bg-zinc-50/20 text-gray-700">
-                      <td className="p-3 font-medium text-gray-950">
-                        <div>
-                          <span>{lead.name}</span>
-                          {lead.location && (
-                            <span className="text-[10px] text-gray-400 font-normal ml-1.5 capitalize">({lead.location})</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {new Date(lead.created_at).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric"
-                        })}
-                      </td>
-                      <td className="p-3 font-semibold text-gray-900">
-                        {lead.guest_count ? `${lead.guest_count} Guests` : "N/A"}
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold capitalize ${
-                          lead.status === "pending"
-                            ? "bg-amber-50 text-amber-600 border border-amber-100"
-                            : lead.status === "responded"
-                            ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                            : "bg-zinc-50 text-zinc-600 border border-zinc-150"
-                        }`}>
-                          {lead.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setExpandedLeadId(isExpanded ? null : lead.id)}
-                          className="text-xs font-semibold text-gold hover:text-black transition-colors inline-flex items-center gap-1.5"
-                        >
-                          <span>{isExpanded ? "Close" : "View"}</span>
-                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {bookings.map((booking) => (
+                  <tr key={booking.id} className="hover:bg-emerald-50/20 text-gray-700 transition-colors">
+                    <td className="p-3 font-bold text-indigo-600">
+                      {new Date(booking.event_date).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                      })}
+                    </td>
+                    <td className="p-3 font-medium text-gray-950">{booking.venue_name}</td>
+                    <td className="p-3">
+                      <span className="font-semibold text-gray-900 block">{booking.customer_name}</span>
+                      <span className="text-[10px] text-gray-400 font-normal">{booking.customer_phone}</span>
+                    </td>
+                    <td className="p-3 font-semibold text-gray-900">
+                      {booking.guest_count ? `${booking.guest_count} Guests` : "N/A"}
+                    </td>
+                    <td className="p-3 font-bold text-slate-900">
+                      {"\u20b9"}{parseFloat(booking.total_amount).toLocaleString()}
+                    </td>
+                    <td className="p-3 font-bold text-rose-600">
+                      {"\u20b9"}{parseFloat(booking.balance_due).toLocaleString()}
+                    </td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold capitalize bg-emerald-50 text-emerald-600 border border-emerald-100">
+                        {booking.status}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/vendor/bookings/${booking.id}`)}
+                        className="text-xs font-bold text-emerald-600 hover:text-emerald-800 transition-colors inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg"
+                      >
+                        View Full Details
+                        <ArrowRight size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
-
-      {/* Expanded Lead Info Panel */}
-      {expandedLeadId !== null && (() => {
-        const lead = leads.find((l) => l.id === expandedLeadId);
-        if (!lead) return null;
-        return (
-          <div className="border border-gold/20 rounded-2xl p-5 bg-gold/5 space-y-4 animate-fade-in">
-            <div className="flex justify-between items-start">
-              <div>
-                <h4 className="text-sm font-bold text-gray-900">Celebration Lead Details</h4>
-                <p className="text-[10px] text-gray-400">Received on {new Date(lead.created_at).toLocaleString()}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setExpandedLeadId(null)}
-                className="text-gray-400 hover:text-black text-xs font-bold"
-              >
-                Close Details
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs border-t border-gold/10 pt-4">
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold text-gold uppercase tracking-wider">Contact Details</p>
-                <div className="space-y-1.5">
-                  <p className="font-semibold text-gray-900 flex items-center gap-1.5">
-                    <Phone size={13} className="text-gray-400" /> {lead.phone}
-                  </p>
-                  {lead.email && (
-                    <p className="text-gray-600 flex items-center gap-1.5">
-                      <Mail size={13} className="text-gray-400" /> {lead.email}
-                    </p>
-                  )}
-                  {lead.location && <p className="text-gray-500 font-medium">Preferred Area: {lead.location}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold text-gold uppercase tracking-wider">Event Specifications</p>
-                <div className="space-y-1">
-                  <p className="text-gray-900">
-                    Target Date: <span className="font-bold">{lead.event_date ? new Date(lead.event_date).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "Flexible / Not Specified"}</span>
-                  </p>
-                  {lead.event_type && <p className="text-gray-600">Event Category: <span className="font-semibold capitalize">{lead.event_type}</span></p>}
-                  {lead.guest_count && <p className="text-gray-600">Guest Count Limit: <span className="font-semibold">{lead.guest_count}</span></p>}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold text-gold uppercase tracking-wider">Customer Inquiry Message</p>
-                <p className="text-gray-700 bg-white/70 p-3 rounded-xl border border-gold/5 italic leading-relaxed">
-                  "{lead.message || "No message provided."}"
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }

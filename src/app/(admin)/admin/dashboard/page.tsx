@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { 
   Check, 
   X, 
@@ -17,7 +18,9 @@ import {
   AlertCircle,
   XCircle,
   HelpCircle,
-  Briefcase
+  Briefcase,
+  Utensils,
+  Palette
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -68,6 +71,10 @@ interface Inquiry {
   event_date: string | null;
   event_type: string;
   guest_count: number | null;
+  catering_package?: number | null;
+  catering_package_name?: string | null;
+  decoration_package?: number | null;
+  decoration_package_name?: string | null;
   message: string;
   status: string;
   created_at: string;
@@ -77,6 +84,21 @@ interface InquiryAnalytics {
   date: string;
   count: number;
 }
+
+interface GroupedInquiry {
+  group_key: string;
+  name: string;
+  phone: string;
+  email: string;
+  location: string;
+  event_date: string | null;
+  first_created_at: string;
+  inquiry_count: number;
+  statuses: string[];
+  overall_status: string;
+  inquiries: Inquiry[];
+}
+
 
 interface Booking {
   id: number;
@@ -97,6 +119,7 @@ interface Booking {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"approvals" | "listings" | "queries" | "bookings">("approvals");
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<string | null>(null);
@@ -105,8 +128,73 @@ export default function AdminDashboard() {
   const [vendors, setVendors] = useState<VendorProfile[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [groupedInquiries, setGroupedInquiries] = useState<GroupedInquiry[]>([]);
   const [analytics, setAnalytics] = useState<InquiryAnalytics[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+
+  // Customer Full Details state
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
+  const [customerInquiries, setCustomerInquiries] = useState<Inquiry[]>([]);
+  const [loadingCustomerDetails, setLoadingCustomerDetails] = useState(false);
+
+  // Confirm Booking Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    inquiry: Inquiry | null;
+    venueAmount: string;
+    cateringAmount: string;
+    decorationAmount: string;
+    djAmount: string;
+    advancePaid: string;
+    session: string;
+    notes: string;
+  }>({
+    isOpen: false,
+    inquiry: null,
+    venueAmount: "",
+    cateringAmount: "0",
+    decorationAmount: "0",
+    djAmount: "0",
+    advancePaid: "0",
+    session: "full_day",
+    notes: "",
+  });
+
+  // Service Options states for edit modal
+  const [allVenues, setAllVenues] = useState<{ id: number; name: string; city?: string; price_per_day?: string }[]>([]);
+  const [allCateringPkgs, setAllCateringPkgs] = useState<{ id: number; name: string; cuisine_type?: string; price_per_plate?: string }[]>([]);
+  const [allDecorPkgs, setAllDecorPkgs] = useState<{ id: number; name: string; style?: string }[]>([]);
+
+  // Edit Inquiry Modal state
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean;
+    inquiry: Inquiry | null;
+    venue_id: string;
+    catering_package_id: string;
+    decoration_package_id: string;
+    name: string;
+    phone: string;
+    location: string;
+    event_date: string;
+    guest_count: string;
+    budget: string;
+    message: string;
+    status: string;
+  }>({
+    isOpen: false,
+    inquiry: null,
+    venue_id: "",
+    catering_package_id: "",
+    decoration_package_id: "",
+    name: "",
+    phone: "",
+    location: "",
+    event_date: "",
+    guest_count: "",
+    budget: "",
+    message: "",
+    status: "pending",
+  });
 
   // Filters & Actions
   const [selectedVenueId, setSelectedVenueId] = useState<string>("all");
@@ -142,6 +230,9 @@ export default function AdminDashboard() {
       const inquiryRes = await api.get(`/venues/admin/inquiries/${inquiryQuery}`);
       setInquiries(inquiryRes.data?.data?.inquiries || []);
 
+      const groupedRes = await api.get(`/venues/admin/inquiries/grouped/${inquiryQuery}`);
+      setGroupedInquiries(groupedRes.data?.data?.grouped_inquiries || []);
+
       const analyticsRes = await api.get(`/venues/admin/inquiries/analytics/${inquiryQuery}`);
       setAnalytics(analyticsRes.data?.data?.analytics || []);
 
@@ -157,27 +248,25 @@ export default function AdminDashboard() {
     }
   };
 
+
+  // Fetch catalogs on mount
+  useEffect(() => {
+    api.get("/venues/venues/").then((res) => {
+      setAllVenues(res.data?.results || res.data?.data?.results || res.data?.data || res.data || []);
+    }).catch(() => {});
+
+    api.get("/catering/catering-packages/").then((res) => {
+      setAllCateringPkgs(res.data?.results || res.data?.data?.results || res.data?.data || res.data || []);
+    }).catch(() => {});
+
+    api.get("/decorations/decoration-packages/").then((res) => {
+      setAllDecorPkgs(res.data?.results || res.data?.data?.results || res.data?.data || res.data || []);
+    }).catch(() => {});
+  }, []);
+
   // Re-fetch venue-specific endpoints when venue ID filter changes
   useEffect(() => {
-    const fetchFilteredData = async () => {
-      try {
-        const venueQuery = selectedVenueId !== "all" ? `?venue_id=${selectedVenueId}` : "";
-        
-        const inquiryRes = await api.get(`/venues/admin/inquiries/${venueQuery}`);
-        setInquiries(inquiryRes.data?.data?.inquiries || []);
-
-        const analyticsRes = await api.get(`/venues/admin/inquiries/analytics/${venueQuery}`);
-        setAnalytics(analyticsRes.data?.data?.analytics || []);
-
-        const bookingRes = await api.get(`/bookings/admin/bookings/${venueQuery}`);
-        setBookings(bookingRes.data?.data?.bookings || []);
-      } catch (err) {
-        console.error("Error fetching filtered venue data:", err);
-      }
-    };
-    if (!loading) {
-      fetchFilteredData();
-    }
+    fetchData();
   }, [selectedVenueId]);
 
   useEffect(() => {
@@ -237,6 +326,103 @@ export default function AdminDashboard() {
       triggerToast(res.data?.message || `Listing status updated to ${nextStatus}.`);
     } catch (err: any) {
       alert(err.response?.data?.detail || err.response?.data?.message || "Failed to update listing status.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleViewCustomerDetails = (phone: string) => {
+    router.push(`/admin/inquiries/customer/${encodeURIComponent(phone)}`);
+  };
+
+  const handleConfirmBookingSubmit = async () => {
+    if (!confirmModal.inquiry) return;
+    if (!confirmModal.venueAmount || isNaN(Number(confirmModal.venueAmount))) {
+      alert("Please enter a valid venue amount.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/bookings/admin/inquiries/${confirmModal.inquiry.id}/confirm/`, {
+        venue_amount: parseFloat(confirmModal.venueAmount),
+        catering_amount: parseFloat(confirmModal.cateringAmount || "0"),
+        decoration_amount: parseFloat(confirmModal.decorationAmount || "0"),
+        dj_amount: parseFloat(confirmModal.djAmount || "0"),
+        advance_paid: parseFloat(confirmModal.advancePaid || "0"),
+        session: confirmModal.session,
+        notes: confirmModal.notes,
+      });
+
+      triggerToast(res.data?.message || "🎉 Booking confirmed successfully!");
+      setConfirmModal({
+        isOpen: false,
+        inquiry: null,
+        venueAmount: "",
+        cateringAmount: "0",
+        decorationAmount: "0",
+        djAmount: "0",
+        advancePaid: "0",
+        session: "full_day",
+        notes: "",
+      });
+
+      // Update state
+      setInquiries(prev => prev.map(i => i.id === confirmModal.inquiry!.id ? { ...i, status: "confirmed" } : i));
+      if (selectedCustomerPhone) {
+        setCustomerInquiries(prev => prev.map(i => i.id === confirmModal.inquiry!.id ? { ...i, status: "confirmed" } : i));
+      }
+      fetchData(); // Sync full dataset
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to confirm booking.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditInquirySubmit = async () => {
+    if (!editModal.inquiry) return;
+    setSubmitting(true);
+    try {
+      const res = await api.patch(`/venues/admin/inquiries/${editModal.inquiry.id}/`, {
+        venue: editModal.venue_id ? parseInt(editModal.venue_id) : null,
+        catering_package: editModal.catering_package_id ? parseInt(editModal.catering_package_id) : null,
+        decoration_package: editModal.decoration_package_id ? parseInt(editModal.decoration_package_id) : null,
+        name: editModal.name,
+        phone: editModal.phone,
+        location: editModal.location,
+        event_date: editModal.event_date || null,
+        guest_count: editModal.guest_count ? parseInt(editModal.guest_count) : null,
+        budget: editModal.budget ? parseFloat(editModal.budget) : null,
+        message: editModal.message,
+        status: editModal.status,
+      });
+
+      triggerToast("Inquiry updated successfully!");
+      setEditModal({
+        isOpen: false,
+        inquiry: null,
+        venue_id: "",
+        catering_package_id: "",
+        decoration_package_id: "",
+        name: "",
+        phone: "",
+        location: "",
+        event_date: "",
+        guest_count: "",
+        budget: "",
+        message: "",
+        status: "pending",
+      });
+
+      const updated = res.data?.data;
+      if (updated) {
+        setInquiries(prev => prev.map(i => i.id === updated.id ? { ...i, ...updated } : i));
+        if (selectedCustomerPhone) {
+          setCustomerInquiries(prev => prev.map(i => i.id === updated.id ? { ...i, ...updated } : i));
+        }
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to update inquiry.");
     } finally {
       setSubmitting(false);
     }
@@ -921,58 +1107,209 @@ export default function AdminDashboard() {
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                   
-                  {/* Left columns: Queries List */}
-                  <div className="xl:col-span-2 space-y-4">
-                    <h3 className="text-xs uppercase tracking-wider font-bold text-slate-400 flex items-center gap-1.5">
-                      <FileText size={13} /> Detailed Inquiries Queue
-                    </h3>
-                    
-                    <div className="space-y-4">
-                      {inquiries.map(inq => (
-                        <div key={inq.id} className="p-5 bg-white border border-gray-150 hover:border-indigo-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
-                          <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-100 group-hover:bg-indigo-500 transition-colors" />
-                          <div className="flex items-center justify-between border-b border-gray-100 pb-3 pl-1">
-                            <div>
-                              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                                {inq.name}
-                              </h4>
-                              <span className="text-[10px] text-indigo-600 font-semibold mt-0.5 block">
-                                Venue: {inq.venue_name}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md font-semibold">
-                              {new Date(inq.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 my-3 text-[10px] text-slate-600 font-medium pl-1">
-                            <div>
-                              <span className="text-slate-400 block text-[9px] uppercase tracking-wide">Phone</span>
-                              <span className="text-slate-900 font-semibold">{inq.phone}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[9px] uppercase tracking-wide">Email</span>
-                              <span className="text-slate-900 font-semibold truncate block" title={inq.email}>{inq.email || "N/A"}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[9px] uppercase tracking-wide">Event Date</span>
-                              <span className="text-indigo-600 font-bold">{inq.event_date || "Not Specified"}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[9px] uppercase tracking-wide">Budget / Guests</span>
-                              <span className="text-slate-950 font-bold">
-                                {inq.budget ? `₹${parseFloat(inq.budget).toLocaleString()}` : "N/A"} / {inq.guest_count ? `${inq.guest_count} guests` : "N/A"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="bg-slate-50/60 p-3 rounded-xl border border-slate-150 text-xs text-slate-700 leading-relaxed italic ml-1">
-                            <span className="text-[9px] uppercase font-bold text-slate-400 not-italic block mb-1">Message Detail</span>
-                            "{inq.message}"
-                          </div>
-                        </div>
-                      ))}
+                  {/* Left columns: Queries List & Customer Full Details */}
+                  <div className="xl:col-span-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs uppercase tracking-wider font-bold text-slate-400 flex items-center gap-1.5">
+                        <FileText size={13} /> Customer Inquiries List
+                      </h3>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        Click "View Full Details" to inspect or confirm bookings
+                      </span>
                     </div>
+
+                    {/* Customer Inquiries Table */}
+                    <div className="border border-gray-150 rounded-xl overflow-x-auto shadow-sm bg-white">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 text-gray-500 border-b border-gray-150 font-semibold">
+                            <th className="p-3 font-bold">#</th>
+                            <th className="p-3 font-bold">Customer Name</th>
+                            <th className="p-3 font-bold">Location</th>
+                            <th className="p-3 font-bold">Phone Number</th>
+                            <th className="p-3 font-bold">Booking Date</th>
+                            <th className="p-3 font-bold">Requests</th>
+                            <th className="p-3 font-bold">Status</th>
+                            <th className="p-3 font-bold text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {groupedInquiries.map((grp, index) => {
+                            const isSelected = selectedCustomerPhone === grp.phone;
+                            return (
+                              <tr
+                                key={grp.group_key}
+                                className={`hover:bg-indigo-50/40 transition-colors ${
+                                  isSelected ? "bg-indigo-50/60 font-semibold" : ""
+                                }`}
+                              >
+                                <td className="p-3 text-slate-400 font-medium">{index + 1}</td>
+                                <td className="p-3 font-bold text-slate-900">{grp.name}</td>
+                                <td className="p-3 text-slate-600 capitalize">{grp.location || "N/A"}</td>
+                                <td className="p-3 font-medium text-slate-800">{grp.phone}</td>
+                                <td className="p-3 font-semibold text-indigo-600">
+                                  {grp.event_date ? new Date(grp.event_date).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' }) : "Not Set"}
+                                </td>
+                                <td className="p-3">
+                                  <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {grp.inquiry_count} {grp.inquiry_count === 1 ? 'Inquiry' : 'Inquiries'}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md capitalize ${
+                                    grp.overall_status === "confirmed"
+                                      ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                                      : grp.overall_status === "closed"
+                                      ? "text-slate-600 bg-slate-100 border border-slate-200"
+                                      : "text-amber-700 bg-amber-50 border border-amber-200"
+                                  }`}>
+                                    {grp.overall_status}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <button
+                                    onClick={() => handleViewCustomerDetails(grp.phone)}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all inline-flex items-center gap-1 ${
+                                      isSelected
+                                        ? "bg-indigo-600 text-white shadow-sm"
+                                        : "bg-slate-100 hover:bg-indigo-50 text-indigo-600 border border-indigo-100"
+                                    }`}
+                                  >
+                                    {isSelected ? "Hide Details" : "View Full Details"}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* EXPANDED CUSTOMER FULL DETAILS PANEL */}
+                    {selectedCustomerPhone && (
+                      <div className="border border-indigo-200 bg-gradient-to-br from-indigo-50/50 via-white to-slate-50 p-6 rounded-2xl shadow-md space-y-6 animate-fade-in relative">
+                        <div className="flex items-center justify-between border-b border-indigo-100 pb-4">
+                          <div>
+                            <span className="text-[10px] uppercase font-extrabold text-indigo-600 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                              Customer Inquiry Details
+                            </span>
+                            <h4 className="text-lg font-bold text-slate-900 mt-1 flex items-center gap-2">
+                              {customerInquiries[0]?.name || "Customer"} — Phone: {selectedCustomerPhone}
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Showing all requested services (Venue, Catering, Decoration) for this phone number.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedCustomerPhone(null);
+                              setCustomerInquiries([]);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+
+                        {loadingCustomerDetails ? (
+                          <div className="py-8 text-center text-xs text-indigo-600 font-semibold flex items-center justify-center gap-2">
+                            <RefreshCw size={16} className="animate-spin" /> Fetching complete customer history...
+                          </div>
+                        ) : customerInquiries.length === 0 ? (
+                          <p className="text-xs text-slate-500 italic py-4">No registered inquiries found for this customer.</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {customerInquiries.map((inq) => (
+                              <div
+                                key={inq.id}
+                                className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 relative"
+                              >
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-900 text-sm">Inquiry #{inq.id}</span>
+                                    <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md capitalize ${
+                                      inq.status === "confirmed"
+                                        ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                                        : "text-amber-700 bg-amber-50 border border-amber-200"
+                                    }`}>
+                                      {inq.status}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => setEditModal({
+                                        isOpen: true,
+                                        inquiry: inq,
+                                        venue_id: inq.venue ? String(inq.venue) : "",
+                                        catering_package_id: inq.catering_package ? String(inq.catering_package) : "",
+                                        decoration_package_id: inq.decoration_package ? String(inq.decoration_package) : "",
+                                        name: inq.name || "",
+                                        phone: inq.phone || "",
+                                        location: inq.location || "",
+                                        event_date: inq.event_date || "",
+                                        guest_count: inq.guest_count ? String(inq.guest_count) : "",
+                                        budget: inq.budget ? String(inq.budget) : "",
+                                        message: inq.message || "",
+                                        status: inq.status || "pending",
+                                      })}
+                                      className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-250 rounded-lg transition-all"
+                                    >
+                                      Edit Details
+                                    </button>
+
+                                    {inq.status !== "confirmed" && (
+                                      <button
+                                        onClick={() => setConfirmModal({
+                                          isOpen: true,
+                                          inquiry: inq,
+                                          venueAmount: inq.budget ? String(inq.budget) : "50000",
+                                          cateringAmount: "0",
+                                          decorationAmount: "0",
+                                          djAmount: "0",
+                                          advancePaid: "10000",
+                                          session: "full_day",
+                                          notes: "",
+                                        })}
+                                        className="px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all inline-flex items-center gap-1.5"
+                                      >
+                                        <Check size={14} /> Confirm Booking
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 space-y-1">
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 block">🏛️ Venue Selection</span>
+                                    <p className="font-bold text-slate-900">{inq.venue_name || "No Venue Selected"}</p>
+                                    <p className="text-slate-500 text-[11px]">Location: {inq.location || "Not specified"}</p>
+                                  </div>
+
+                                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 space-y-1">
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 block">🍽️ Catering Package</span>
+                                    <p className="font-bold text-slate-900">{inq.catering_package_name || "None / Standard Venue Catering"}</p>
+                                    <p className="text-slate-500 text-[11px]">Guests: {inq.guest_count || "Not specified"}</p>
+                                  </div>
+
+                                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 space-y-1">
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 block">🎨 Decoration Package</span>
+                                    <p className="font-bold text-slate-900">{inq.decoration_package_name || "None / Standard Venue Decor"}</p>
+                                    <p className="text-slate-500 text-[11px]">Budget: {inq.budget ? `₹${parseFloat(inq.budget).toLocaleString()}` : "N/A"}</p>
+                                  </div>
+                                </div>
+
+                                {inq.message && (
+                                  <div className="text-xs bg-slate-50/70 p-3 rounded-xl border border-slate-150 text-slate-700 italic">
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 not-italic block mb-0.5">Customer Special Requests:</span>
+                                    "{inq.message}"
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right column: Day-wise volume analytics chart */}
@@ -1209,6 +1546,329 @@ export default function AdminDashboard() {
                 className="px-4 py-2 text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-sm transition-all disabled:opacity-55"
               >
                 Submit Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM BOOKING MODAL */}
+      {confirmModal.isOpen && confirmModal.inquiry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-gray-150 rounded-2xl w-full max-w-lg shadow-2xl p-6 relative animate-zoom-in max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false, inquiry: null }))}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition-colors"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="font-heading font-bold text-lg text-gray-950 flex items-center gap-2">
+              <Check className="text-emerald-600" size={20} /> Confirm Venue Booking
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Create confirmed booking for <strong>{confirmModal.inquiry.name}</strong> ({confirmModal.inquiry.venue_name})
+            </p>
+
+            <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Venue Booking Amount (₹) *</label>
+                <input
+                  type="number"
+                  value={confirmModal.venueAmount}
+                  onChange={(e) => setConfirmModal(prev => ({ ...prev, venueAmount: e.target.value }))}
+                  placeholder="e.g. 75000"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Catering Amount (₹)</label>
+                  <input
+                    type="number"
+                    value={confirmModal.cateringAmount}
+                    onChange={(e) => setConfirmModal(prev => ({ ...prev, cateringAmount: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Decoration Amount (₹)</label>
+                  <input
+                    type="number"
+                    value={confirmModal.decorationAmount}
+                    onChange={(e) => setConfirmModal(prev => ({ ...prev, decorationAmount: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">DJ / Sound Amount (₹)</label>
+                  <input
+                    type="number"
+                    value={confirmModal.djAmount}
+                    onChange={(e) => setConfirmModal(prev => ({ ...prev, djAmount: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Advance Received (₹)</label>
+                  <input
+                    type="number"
+                    value={confirmModal.advancePaid}
+                    onChange={(e) => setConfirmModal(prev => ({ ...prev, advancePaid: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold text-emerald-700"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Session Slot</label>
+                <select
+                  value={confirmModal.session}
+                  onChange={(e) => setConfirmModal(prev => ({ ...prev, session: e.target.value }))}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white"
+                >
+                  <option value="full_day">Full Day</option>
+                  <option value="morning">Morning (6am–12pm)</option>
+                  <option value="afternoon">Afternoon (12pm–6pm)</option>
+                  <option value="evening">Evening (6pm–12am)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Internal Admin Notes</label>
+                <textarea
+                  rows={2}
+                  value={confirmModal.notes}
+                  onChange={(e) => setConfirmModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Payment reference, special instructions, custom verbal agreements..."
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center font-bold text-sm">
+                <span>Calculated Total:</span>
+                <span className="text-indigo-600">
+                  ₹{(
+                    (parseFloat(confirmModal.venueAmount || "0") || 0) +
+                    (parseFloat(confirmModal.cateringAmount || "0") || 0) +
+                    (parseFloat(confirmModal.decorationAmount || "0") || 0) +
+                    (parseFloat(confirmModal.djAmount || "0") || 0)
+                  ).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false, inquiry: null }))}
+                className="px-4 py-2 text-xs font-semibold bg-gray-50 border border-gray-250 hover:bg-gray-100 text-gray-600 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmBookingSubmit}
+                disabled={submitting}
+                className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all disabled:opacity-55 inline-flex items-center gap-1.5"
+              >
+                <Check size={14} /> Lock & Confirm Booking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT INQUIRY MODAL */}
+      {editModal.isOpen && editModal.inquiry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-gray-150 rounded-2xl w-full max-w-lg shadow-2xl p-6 relative animate-zoom-in max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setEditModal(prev => ({ ...prev, isOpen: false, inquiry: null }))}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition-colors"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="font-heading font-bold text-lg text-gray-950 flex items-center gap-2">
+              <Briefcase className="text-indigo-600" size={20} /> Modify Customer Inquiry
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Update inquiry specifications as requested by customer.
+            </p>
+
+            <div className="mt-4 space-y-3 text-xs">
+              {/* Venue Selection */}
+              <div>
+                <label className="font-bold text-slate-800 block mb-1 flex items-center gap-1.5">
+                  <Building size={14} className="text-indigo-600" /> Venue Selection
+                </label>
+                <select
+                  value={editModal.venue_id}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, venue_id: e.target.value }))}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-semibold text-slate-900"
+                >
+                  <option value="">-- Select Venue --</option>
+                  {allVenues.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} {v.city ? `(${v.city})` : ""} {v.price_per_day ? `— ₹${parseFloat(v.price_per_day).toLocaleString()}/day` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Catering Package Selection */}
+              <div>
+                <label className="font-bold text-slate-800 block mb-1 flex items-center gap-1.5">
+                  <Utensils size={14} className="text-amber-600" /> Catering Package (Select lower/different pricing)
+                </label>
+                <select
+                  value={editModal.catering_package_id}
+                  onChange={(e) => {
+                    const catId = e.target.value;
+                    const selectedPkg = allCateringPkgs.find(p => String(p.id) === catId);
+                    let suggestedBudget = editModal.budget;
+                    if (selectedPkg && selectedPkg.price_per_plate && editModal.guest_count) {
+                      const estCat = parseFloat(selectedPkg.price_per_plate) * parseInt(editModal.guest_count);
+                      suggestedBudget = String(estCat);
+                    }
+                    setEditModal(prev => ({
+                      ...prev,
+                      catering_package_id: catId,
+                      budget: suggestedBudget || prev.budget
+                    }));
+                  }}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-medium text-slate-800"
+                >
+                  <option value="">None / Remove Catering Package</option>
+                  {allCateringPkgs.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.cuisine_type ? `[${p.cuisine_type}]` : ""} {p.price_per_plate ? `— ₹${parseFloat(p.price_per_plate).toLocaleString()}/plate` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Decoration Package Selection */}
+              <div>
+                <label className="font-bold text-slate-800 block mb-1 flex items-center gap-1.5">
+                  <Palette size={14} className="text-purple-600" /> Decoration Package Selection
+                </label>
+                <select
+                  value={editModal.decoration_package_id}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, decoration_package_id: e.target.value }))}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-medium text-slate-800"
+                >
+                  <option value="">None / Remove Decoration Package</option>
+                  {allDecorPkgs.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.style ? `(${p.style})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Customer Name</label>
+                  <input
+                    type="text"
+                    value={editModal.name}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editModal.phone}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, phone: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Location / Preferred Area</label>
+                  <input
+                    type="text"
+                    value={editModal.location}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, location: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Target Event Date</label>
+                  <input
+                    type="date"
+                    value={editModal.event_date}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, event_date: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Guest Count</label>
+                  <input
+                    type="number"
+                    value={editModal.guest_count}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, guest_count: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Estimated Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={editModal.budget}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, budget: e.target.value }))}
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Inquiry Status</label>
+                <select
+                  value={editModal.status}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, status: e.target.value }))}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="responded">Responded</option>
+                  <option value="closed">Closed</option>
+                  <option value="confirmed">Confirmed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Customer Special Note / Message</label>
+                <textarea
+                  rows={3}
+                  value={editModal.message}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, message: e.target.value }))}
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setEditModal(prev => ({ ...prev, isOpen: false, inquiry: null }))}
+                className="px-4 py-2 text-xs font-semibold bg-gray-50 border border-gray-250 hover:bg-gray-100 text-gray-600 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditInquirySubmit}
+                disabled={submitting}
+                className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all disabled:opacity-55"
+              >
+                Save Inquiry Changes
               </button>
             </div>
           </div>

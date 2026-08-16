@@ -78,6 +78,9 @@ export interface VendorProfileData {
   is_approved: boolean;
   rejection_reason: string;
   catering_business?: any;
+  details?: any;
+  photographer_profile?: any;
+  name?: string;
   created_at: string;
 }
 
