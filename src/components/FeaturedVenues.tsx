@@ -47,7 +47,7 @@ function VenueCard({ venue, index }: { venue: Venue; index: number }) {
   const [wishlisted, setWishlisted] = useState(false);
 
   return (
-    <div className="venue-card group">
+    <div className="venue-card group shadow-gold-hover border border-transparent">
       {/* Image */}
       <div className="relative overflow-hidden h-52">
         <Image

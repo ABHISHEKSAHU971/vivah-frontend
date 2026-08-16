@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useStore } from "@/store/store";
+import { vendorApi, type VendorProfileData } from "@/lib/authApi";
 import {
   Store,
   MapPin,
@@ -24,6 +27,9 @@ import {
   Clock,
   Award,
   TrendingUp,
+  Upload,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -50,9 +56,7 @@ interface PlanTask {
   category: "setup" | "ops" | "wrap";
 }
 
-// ─── Mock Data ─────────────────────────────────────────────────────────
-const VENDOR_TYPES = ["Venue", "Catering", "Decor", "DJ & Sound", "Photography"];
-
+// ─── Mock Bookings (Phase 2 will replace with real API) ───────────────
 const defaultBookings: BookingRequest[] = [
   {
     id: 1,
@@ -124,23 +128,6 @@ function StatPill({ icon: Icon, label, value, color }: { icon: React.ElementType
   );
 }
 
-function CategoryBadge({ type }: { type: string }) {
-  const icons: Record<string, string> = {
-    Venue: "🏛️",
-    Catering: "🍽️",
-    Decor: "🌸",
-    "DJ & Sound": "🎵",
-    Photography: "📷",
-  };
-  return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest"
-      style={{ background: "rgba(201,164,64,0.18)", border: "1px solid rgba(201,164,64,0.4)", color: "#C9A440" }}>
-      <span>{icons[type] ?? "🏷️"}</span>
-      {type} Partner
-    </span>
-  );
-}
-
 function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose: () => void }) {
   const [tasks, setTasks] = useState<PlanTask[]>(() => generatePlan(booking));
   const [newTask, setNewTask] = useState("");
@@ -148,9 +135,7 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
 
   const toggle = (id: number) =>
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: t.status === "done" ? "pending" : "done" } : t)));
-
   const remove = (id: number) => setTasks((prev) => prev.filter((t) => t.id !== id));
-
   const addTask = () => {
     if (!newTask.trim()) return;
     setTasks((prev) => [
@@ -162,7 +147,6 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
 
   const filtered = filter === "all" ? tasks : tasks.filter((t) => t.category === filter);
   const done = tasks.filter((t) => t.status === "done").length;
-
   const catColors: Record<string, string> = {
     setup: "bg-blue-50 text-blue-600 border-blue-100",
     ops: "bg-amber-50 text-amber-600 border-amber-100",
@@ -171,7 +155,6 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
 
   return (
     <div className="mt-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-gold/20 overflow-hidden shadow-2xl">
-      {/* Planner header */}
       <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gold/20 flex items-center justify-center">
@@ -192,56 +175,32 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
           </button>
         </div>
       </div>
-
-      {/* Progress bar */}
       <div className="px-5 py-2 bg-slate-900/50">
         <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${(done / tasks.length) * 100}%`,
-              background: "linear-gradient(90deg, #C9A440, #D4B96A)",
-            }}
-          />
+          <div className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${(done / tasks.length) * 100}%`, background: "linear-gradient(90deg, #C9A440, #D4B96A)" }} />
         </div>
       </div>
-
-      {/* Filter tabs */}
       <div className="px-5 pt-3 flex gap-2">
         {(["all", "setup", "ops", "wrap"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
+          <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
-              filter === f
-                ? "bg-gold text-black"
-                : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"
-            }`}
-          >
+              filter === f ? "bg-gold text-black" : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"
+            }`}>
             {f === "all" ? "All Tasks" : f === "setup" ? "⚙️ Setup" : f === "ops" ? "⚡ Operations" : "🔚 Wrap-up"}
           </button>
         ))}
       </div>
-
-      {/* Task list */}
       <div className="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
         {filtered.map((task) => (
-          <div
-            key={task.id}
+          <div key={task.id}
             className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-              task.status === "done"
-                ? "bg-white/5 border-white/5 opacity-60"
-                : "bg-white/8 border-white/10 hover:border-gold/30"
-            }`}
-          >
-            <button
-              onClick={() => toggle(task.id)}
+              task.status === "done" ? "bg-white/5 border-white/5 opacity-60" : "bg-white/8 border-white/10 hover:border-gold/30"
+            }`}>
+            <button onClick={() => toggle(task.id)}
               className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                task.status === "done"
-                  ? "bg-gold border-gold"
-                  : "border-slate-600 hover:border-gold"
-              }`}
-            >
+                task.status === "done" ? "bg-gold border-gold" : "border-slate-600 hover:border-gold"
+              }`}>
               {task.status === "done" && <Check size={10} className="text-black" />}
             </button>
             <div className="flex-grow min-w-0">
@@ -255,31 +214,20 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
                 </span>
               </p>
             </div>
-            <button
-              onClick={() => remove(task.id)}
-              className="shrink-0 text-slate-600 hover:text-red-400 transition-colors"
-            >
+            <button onClick={() => remove(task.id)} className="shrink-0 text-slate-600 hover:text-red-400 transition-colors">
               <Trash2 size={12} />
             </button>
           </div>
         ))}
       </div>
-
-      {/* Add task */}
       <div className="px-5 pb-5 pt-1 border-t border-white/10 mt-1">
         <div className="flex gap-2 mt-3">
-          <input
-            type="text"
-            value={newTask}
+          <input type="text" value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addTask()}
             placeholder="Add a custom task…"
-            className="flex-grow bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gold/50"
-          />
-          <button
-            onClick={addTask}
-            className="btn-gold px-4 py-2 rounded-lg text-xs shrink-0"
-          >
+            className="flex-grow bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gold/50" />
+          <button onClick={addTask} className="btn-gold px-4 py-2 rounded-lg text-xs shrink-0">
             <Plus size={13} />
           </button>
         </div>
@@ -288,17 +236,12 @@ function PlannerSection({ booking, onClose }: { booking: BookingRequest; onClose
   );
 }
 
-function BookingCard({
-  booking,
-  onAccept,
-  onDecline,
-}: {
+function BookingCard({ booking, onAccept, onDecline }: {
   booking: BookingRequest;
   onAccept: (id: number) => void;
   onDecline: (id: number) => void;
 }) {
   const [planOpen, setPlanOpen] = useState(booking.planGenerated);
-
   const statusStyle: Record<BookingStatus, string> = {
     pending: "bg-blue-50 text-blue-600 border-blue-100",
     accepted: "bg-emerald-50 text-emerald-600 border-emerald-100",
@@ -311,20 +254,16 @@ function BookingCard({
   };
 
   return (
-    <div
-      className={`border rounded-2xl overflow-hidden transition-all duration-300 ${
-        booking.status === "declined" ? "opacity-50 grayscale" : "shadow-sm hover:shadow-md"
-      }`}
+    <div className={`border rounded-2xl overflow-hidden transition-all duration-300 ${
+      booking.status === "declined" ? "opacity-50 grayscale" : "shadow-sm hover:shadow-md"
+    }`}
       style={{
         borderColor: booking.status === "accepted" ? "rgba(16,185,129,0.3)" : booking.status === "declined" ? "rgba(239,68,68,0.2)" : "rgba(201,164,64,0.2)",
         background: booking.status === "accepted" ? "rgba(16,185,129,0.03)" : "white",
-      }}
-    >
+      }}>
       <div className="p-4 space-y-3">
-        {/* Top row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            {/* Avatar */}
             <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm text-white"
               style={{ background: "linear-gradient(135deg, #C9A440, #0A1628)" }}>
               {booking.customerName.split(" ").map((n) => n[0]).join("")}
@@ -340,8 +279,6 @@ function BookingCard({
             {statusLabel[booking.status]}
           </span>
         </div>
-
-        {/* Event details pills */}
         <div className="flex flex-wrap gap-2">
           <span className="flex items-center gap-1 bg-slate-50 border border-slate-100 text-slate-600 text-[10px] font-semibold px-2.5 py-1 rounded-full">
             <Calendar size={10} /> {booking.eventDate}
@@ -353,49 +290,36 @@ function BookingCard({
             🎊 {booking.eventType}
           </span>
         </div>
-
-        {/* Actions */}
         {booking.status === "pending" && (
           <div className="flex items-center gap-2 pt-1">
-            <button
-              onClick={() => onAccept(booking.id)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-all"
-            >
+            <button onClick={() => onAccept(booking.id)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
               <CheckCircle2 size={13} /> Accept
             </button>
-            <button
-              onClick={() => onDecline(booking.id)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all"
-            >
+            <button onClick={() => onDecline(booking.id)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all">
               <XCircle size={13} /> Decline
             </button>
             <div className="flex-grow" />
-            <button
-              onClick={() => setPlanOpen((prev) => !prev)}
+            <button onClick={() => setPlanOpen((p) => !p)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-black transition-all hover:shadow-md"
-              style={{ background: "linear-gradient(135deg, #C9A440, #D4B96A)" }}
-            >
+              style={{ background: "linear-gradient(135deg, #C9A440, #D4B96A)" }}>
               <Zap size={13} /> Generate Event Plan
               {planOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
           </div>
         )}
-
         {booking.status === "accepted" && (
           <div className="flex items-center gap-2 pt-1">
-            <button
-              onClick={() => setPlanOpen((prev) => !prev)}
+            <button onClick={() => setPlanOpen((p) => !p)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-black transition-all hover:shadow-md"
-              style={{ background: "linear-gradient(135deg, #C9A440, #D4B96A)" }}
-            >
+              style={{ background: "linear-gradient(135deg, #C9A440, #D4B96A)" }}>
               <Zap size={13} /> {planOpen ? "Hide" : "View"} Event Plan
               {planOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
           </div>
         )}
       </div>
-
-      {/* Planner panel */}
       {planOpen && (
         <div className="px-4 pb-4">
           <PlannerSection booking={booking} onClose={() => setPlanOpen(false)} />
@@ -408,34 +332,165 @@ function BookingCard({
 // ─── Main Page ──────────────────────────────────────────────────────────
 
 export default function VendorProfile() {
-  const [vendorType, setVendorType] = useState("Venue");
-  const [editMode, setEditMode] = useState(false);
-  const [businessName, setBusinessName] = useState("Royal Gardens & Banquets");
-  const [gstin, setGstin] = useState("23AAAAA1111A1Z1");
-  const [city, setCity] = useState("Bhopal");
-  const [phone, setPhone] = useState("+91 98765 99999");
-  const [email, setEmail] = useState("contact@royalgardens.in");
-  const [bookings, setBookings] = useState<BookingRequest[]>(defaultBookings);
-  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const [notifExpanded, setNotifExpanded] = useState(true);
+  const router = useRouter();
+  const setVendorProfile = useStore((s) => s.setVendorProfile);
+  const storeProfile = useStore((s) => s.vendorProfile);
+  const token = useStore((s) => s.token);
 
+  const [profile, setProfile] = useState<VendorProfileData | null>(storeProfile);
+  const [loadError, setLoadError] = useState("");
+  const [pageLoading, setPageLoading] = useState(!storeProfile);
+
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<VendorProfileData>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+
+  // Logo upload
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Bookings (Phase 2 — still mock)
+  const [bookings, setBookings] = useState<BookingRequest[]>(defaultBookings);
+  const [notifExpanded, setNotifExpanded] = useState(true);
   const pendingCount = bookings.filter((b) => b.status === "pending").length;
 
-  const handleAccept = (id: number) =>
-    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: "accepted", planGenerated: true } : b)));
+  // Fetch profile on mount
+  useEffect(() => {
+    if (!token) {
+      router.push("/vendor/login");
+      return;
+    }
+    if (storeProfile) {
+      setProfile(storeProfile);
+      setPageLoading(false);
+      return;
+    }
+    vendorApi.getProfile()
+      .then((p) => {
+        setProfile(p);
+        setVendorProfile(p);
+      })
+      .catch(() => {
+        setLoadError("Could not load your profile. Please refresh or try logging in again.");
+      })
+      .finally(() => setPageLoading(false));
+  }, [token, storeProfile, setVendorProfile, router]);
 
+  const handleAccept = (id: number) =>
+    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: "accepted" as BookingStatus, planGenerated: true } : b)));
   const handleDecline = (id: number) =>
-    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: "declined" } : b)));
+    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: "declined" as BookingStatus } : b)));
+
+  const startEdit = () => {
+    if (!profile) return;
+    setEditForm({
+      full_name: profile.full_name,
+      email: profile.email ?? "",
+      business_name: profile.business_name,
+      description: profile.description,
+      city: profile.city,
+      state: profile.state,
+      address: profile.address,
+      gstin: profile.gstin,
+    });
+    setEditMode(true);
+    setSaveMsg("");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const updated = await vendorApi.updateProfile({
+        full_name: editForm.full_name,
+        email: editForm.email || undefined,
+        business_name: editForm.business_name,
+        description: editForm.description,
+        city: editForm.city,
+        state: editForm.state,
+        address: editForm.address,
+        gstin: editForm.gstin,
+      });
+      setProfile(updated);
+      setVendorProfile(updated);
+      setEditMode(false);
+      setSaveMsg("Profile saved successfully.");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch {
+      setSaveMsg("Save failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("Logo must be under 2 MB.");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setLogoError("Only JPEG, PNG, or WebP files allowed.");
+      return;
+    }
+    setLogoError("");
+    setLogoUploading(true);
+    try {
+      const res = await vendorApi.uploadLogo(file);
+      if (profile) {
+        const updated = { ...profile, logo: res.logo_url };
+        setProfile(updated);
+        setVendorProfile(updated);
+      }
+    } catch {
+      setLogoError("Logo upload failed. Please try again.");
+    } finally {
+      setLogoUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  };
+
+  // ── Loading / Error states ─────────────────────────────────────────────
+  if (pageLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center font-body">
+        <div className="flex flex-col items-center gap-3 text-gray-400">
+          <Loader2 size={32} className="animate-spin text-gold" />
+          <p className="text-sm">Loading your profile…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !profile) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center font-body">
+        <div className="flex flex-col items-center gap-3 text-center max-w-sm">
+          <AlertCircle size={32} className="text-red-400" />
+          <p className="text-sm text-gray-600">{loadError || "Profile not found."}</p>
+          <button onClick={() => window.location.reload()}
+            className="text-xs text-gold underline">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  const logoUrl = profile.logo
+    ? profile.logo.startsWith("http")
+      ? profile.logo
+      : `http://localhost:8000${profile.logo}`
+    : null;
 
   return (
     <div className="space-y-6 font-body">
 
       {/* ── Premium Header Card ───────────────────── */}
-      <div
-        className="rounded-2xl overflow-hidden relative"
-        style={{ background: "linear-gradient(135deg, #050D1A 0%, #0A1628 50%, #0F1E35 100%)" }}
-      >
-        {/* Subtle decorative blobs */}
+      <div className="rounded-2xl overflow-hidden relative"
+        style={{ background: "linear-gradient(135deg, #050D1A 0%, #0A1628 50%, #0F1E35 100%)" }}>
         <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-5"
           style={{ background: "radial-gradient(circle, #C9A440, transparent)", transform: "translate(30%, -30%)" }} />
         <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full opacity-5"
@@ -444,84 +499,119 @@ export default function VendorProfile() {
         <div className="relative px-6 py-6 md:px-8 md:py-8">
           <div className="flex flex-col md:flex-row md:items-start gap-5">
 
-            {/* Avatar */}
-            <div
-              className="w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center shrink-0 font-bold text-2xl text-gold border"
-              style={{ background: "rgba(201,164,64,0.12)", borderColor: "rgba(201,164,64,0.3)" }}
-            >
-              {businessName.charAt(0)}
+            {/* Logo / Avatar */}
+            <div className="relative shrink-0">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Business Logo"
+                  className="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border"
+                  style={{ borderColor: "rgba(201,164,64,0.3)" }} />
+              ) : (
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center shrink-0 font-bold text-2xl text-gold border"
+                  style={{ background: "rgba(201,164,64,0.12)", borderColor: "rgba(201,164,64,0.3)" }}>
+                  {profile.business_name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              {/* Upload overlay */}
+              <button
+                onClick={() => logoInputRef.current?.click()}
+                disabled={logoUploading}
+                title="Upload logo"
+                className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-gold text-black flex items-center justify-center border-2 border-slate-900 hover:bg-gold/80 transition-all"
+              >
+                {logoUploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={11} />}
+              </button>
+              <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                className="hidden" onChange={handleLogoChange} />
             </div>
 
             {/* Identity block */}
             <div className="flex-grow space-y-2.5">
-              {/* Vendor type badge — clickable dropdown */}
-              <div className="relative inline-block">
-                <button
-                  onClick={() => setShowTypeDropdown((p) => !p)}
-                  className="flex items-center gap-1.5"
+              {/* Approval badge */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest"
+                  style={{ background: "rgba(201,164,64,0.18)", border: "1px solid rgba(201,164,64,0.4)", color: "#C9A440" }}
                 >
-                  <CategoryBadge type={vendorType} />
-                  <ChevronDown size={12} className="text-gold" />
-                </button>
-                {showTypeDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-10 min-w-[160px]">
-                    {VENDOR_TYPES.map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => { setVendorType(t); setShowTypeDropdown(false); }}
-                        className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors hover:bg-slate-700 ${t === vendorType ? "text-gold" : "text-slate-300"}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
+                  {profile.vendor_type} Partner
+                </span>
+                {profile.is_approved ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
+                    <ShieldCheck size={9} /> Approved
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-semibold">
+                    <Clock size={9} /> Pending Approval
+                  </span>
                 )}
               </div>
 
-              {/* Business name */}
               <h1 className="text-2xl md:text-3xl font-heading font-semibold text-white leading-tight">
-                {businessName}
+                {profile.business_name}
               </h1>
 
-              {/* Meta */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                  <MapPin size={10} /> {city}
+                  <MapPin size={10} /> {profile.city}, {profile.state}
                 </span>
+                {profile.gstin && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-slate-600" />
+                    <span className="flex items-center gap-1 text-slate-400 text-[11px]">
+                      <ShieldCheck size={10} className="text-emerald-400" /> GSTIN Verified
+                    </span>
+                  </>
+                )}
                 <span className="w-1 h-1 rounded-full bg-slate-600" />
                 <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                  <ShieldCheck size={10} className="text-emerald-400" /> GSTIN Verified
-                </span>
-                <span className="w-1 h-1 rounded-full bg-slate-600" />
-                <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                  <Award size={10} className="text-gold" /> Active Since 2024
+                  <Award size={10} className="text-gold" /> Member since {new Date(profile.created_at).getFullYear()}
                 </span>
               </div>
 
-              {/* Stat pills */}
               <div className="flex flex-wrap gap-2 pt-1">
                 <StatPill icon={Star} label="Avg Rating" value="4.8 / 5.0" color="bg-amber-500/20 text-amber-400" />
                 <StatPill icon={Calendar} label="Bookings" value="142 Events" color="bg-blue-500/20 text-blue-400" />
                 <StatPill icon={Users} label="Guests Served" value="64,000+" color="bg-emerald-500/20 text-emerald-400" />
                 <StatPill icon={TrendingUp} label="Est. Earnings" value="₹12.4L" color="bg-purple-500/20 text-purple-400" />
               </div>
+
+              {logoError && (
+                <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={11} /> {logoError}</p>
+              )}
             </div>
 
             {/* Edit toggle */}
             <button
-              onClick={() => setEditMode((p) => !p)}
+              onClick={editMode ? handleSave : startEdit}
+              disabled={saving}
               className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
                 editMode
                   ? "bg-gold text-black border-gold"
                   : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
               }`}
             >
-              {editMode ? <Save size={13} /> : <Pencil size={13} />}
-              {editMode ? "Save Profile" : "Edit Profile"}
+              {saving ? <Loader2 size={13} className="animate-spin" /> : editMode ? <Save size={13} /> : <Pencil size={13} />}
+              {saving ? "Saving…" : editMode ? "Save Profile" : "Edit Profile"}
             </button>
           </div>
+
+          {/* Rejection notice */}
+          {!profile.is_approved && profile.rejection_reason && (
+            <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-300">
+              <p className="font-semibold flex items-center gap-1.5"><AlertCircle size={12} /> Application Feedback</p>
+              <p className="mt-1 text-red-400/80">{profile.rejection_reason}</p>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Success / error message */}
+      {saveMsg && (
+        <div className={`rounded-xl px-4 py-3 text-xs font-semibold ${
+          saveMsg.includes("failed") ? "bg-red-50 text-red-600 border border-red-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+        }`}>
+          {saveMsg}
+        </div>
+      )}
 
       {/* ── Business Details Grid ─────────────────── */}
       <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
@@ -538,12 +628,13 @@ export default function VendorProfile() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { label: "Business Name", value: businessName, onChange: setBusinessName, icon: Store },
-            { label: "GSTIN / Registration Code", value: gstin, onChange: setGstin, icon: ShieldCheck },
-            { label: "Primary City", value: city, onChange: setCity, icon: MapPin },
-            { label: "Support Phone", value: phone, onChange: setPhone, icon: Phone },
-            { label: "Contact Email", value: email, onChange: setEmail, icon: Mail },
-          ].map(({ label, value, onChange, icon: Icon }) => (
+            { label: "Business Name", field: "business_name" as const, icon: Store, value: editMode ? editForm.business_name ?? "" : profile.business_name },
+            { label: "GSTIN", field: "gstin" as const, icon: ShieldCheck, value: editMode ? editForm.gstin ?? "" : profile.gstin },
+            { label: "City", field: "city" as const, icon: MapPin, value: editMode ? editForm.city ?? "" : profile.city },
+            { label: "State", field: "state" as const, icon: MapPin, value: editMode ? editForm.state ?? "" : profile.state },
+            { label: "Contact Email", field: "email" as const, icon: Mail, value: editMode ? editForm.email ?? "" : profile.email ?? "" },
+            { label: "Full Name", field: "full_name" as const, icon: Phone, value: editMode ? editForm.full_name ?? "" : profile.full_name },
+          ].map(({ label, field, icon: Icon, value }) => (
             <div key={label} className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1.5 block">
                 <Icon size={10} className="text-gold" /> {label}
@@ -552,7 +643,7 @@ export default function VendorProfile() {
                 type="text"
                 value={value}
                 disabled={!editMode}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, [field]: e.target.value }))}
                 className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all ${
                   editMode
                     ? "bg-white border-gold/40 text-gray-900 focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)]"
@@ -561,12 +652,62 @@ export default function VendorProfile() {
               />
             </div>
           ))}
+
+          {/* Description — full width */}
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Description</label>
+            <textarea
+              value={editMode ? editForm.description ?? "" : profile.description}
+              disabled={!editMode}
+              rows={3}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all resize-none ${
+                editMode
+                  ? "bg-white border-gold/40 text-gray-900 focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)]"
+                  : "bg-zinc-50 border-gray-100 text-gray-600 cursor-not-allowed"
+              }`}
+            />
+          </div>
+
+          {/* Address — full width */}
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Address</label>
+            <input
+              type="text"
+              value={editMode ? editForm.address ?? "" : profile.address}
+              disabled={!editMode}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all ${
+                editMode
+                  ? "bg-white border-gold/40 text-gray-900 focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)]"
+                  : "bg-zinc-50 border-gray-100 text-gray-600 cursor-not-allowed"
+              }`}
+            />
+          </div>
         </div>
+
+        {editMode && (
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold btn-gold text-black disabled:opacity-70"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+            <button
+              onClick={() => { setEditMode(false); setSaveMsg(""); }}
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Booking Request Notifications ─────────── */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        {/* Section header */}
         <button
           onClick={() => setNotifExpanded((p) => !p)}
           className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors"
@@ -599,6 +740,9 @@ export default function VendorProfile() {
 
         {notifExpanded && (
           <div className="px-6 pb-6 space-y-4 border-t border-gray-50 pt-4">
+            <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg font-semibold">
+              ⚡ Booking requests API coming in Phase 2 — showing sample data for now.
+            </p>
             {bookings.map((b) => (
               <BookingCard key={b.id} booking={b} onAccept={handleAccept} onDecline={handleDecline} />
             ))}
