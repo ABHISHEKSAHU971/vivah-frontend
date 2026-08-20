@@ -41,7 +41,11 @@ export default function VendorRegister() {
     setError("");
     setLoading(true);
     try {
-      const res = await authApi.sendOtp({ phone: cleaned, role: "vendor" });
+      const res = await authApi.sendOtp({ phone: cleaned, role: "vendor", intent: "register" });
+      if (res.is_new_user === false) {
+        setError("This number is already registered. Please sign in.");
+        return;
+      }
       setIsNewUser(res.is_new_user);
       if (res.dev_otp) setDevOtp(res.dev_otp);
       setStep("otp");
@@ -140,8 +144,15 @@ export default function VendorRegister() {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-xs flex items-center gap-1.5">
-              <ShieldAlert size={14} /> {error}
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-xs space-y-1.5">
+              <p className="flex items-center gap-1.5">
+                <ShieldAlert size={14} /> {error}
+              </p>
+              {error.toLowerCase().includes("already registered") && (
+                <Link href="/vendor/login" className="text-gold hover:underline font-semibold inline-block pl-5">
+                  Go to vendor sign in
+                </Link>
+              )}
             </div>
           )}
 
@@ -167,7 +178,7 @@ export default function VendorRegister() {
                     className="flex-1 bg-transparent px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
                   />
                 </div>
-                <p className="text-[10px] text-zinc-500">A new vendor account will be created if this number isn&apos;t registered.</p>
+                <p className="text-[10px] text-zinc-500">If this number is already registered, please sign in instead.</p>
               </div>
 
               <button
@@ -243,7 +254,7 @@ export default function VendorRegister() {
           <p className="text-[11px] text-zinc-400 text-center">
             Already registered?{" "}
             <Link href="/vendor/login" className="text-gold hover:underline font-semibold">
-              Sign In Here
+              Please sign in
             </Link>
           </p>
         </div>

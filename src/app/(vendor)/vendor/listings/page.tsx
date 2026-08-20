@@ -14,6 +14,8 @@ interface Listing {
   state: string;
   status: "draft" | "pending_approval" | "active" | "suspended";
   created_at: string;
+  image?: string | null;
+  media?: { image: string; is_default: boolean }[];
 }
 
 export default function VendorListingsPage() {
@@ -73,8 +75,8 @@ export default function VendorListingsPage() {
     <div className="space-y-8 font-body">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-heading font-semibold text-gray-900">My Listings</h1>
-          <p className="text-xs text-gray-400 mt-1">Manage and edit your business services and venue profiles</p>
+          <h1 className="text-2xl font-heading font-semibold text-gray-900">My Services</h1>
+          <p className="text-xs text-gray-400 mt-1">Manage venues, catering, decor, and other services you offer</p>
         </div>
         <Link href="/vendor/listings/add" className="btn-gold text-xs rounded-xl flex items-center gap-1.5 shrink-0 hover:shadow-lg transition-all px-4 py-2.5">
           <Plus size={15} /> Add New Listing
@@ -108,8 +110,15 @@ export default function VendorListingsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map((item) => (
+          {listings.map((item) => {
+            const cover = item.image || item.media?.find((m) => m.is_default)?.image || item.media?.[0]?.image;
+            return (
             <div key={item.id} className="border border-gray-150 rounded-2xl overflow-hidden shadow-sm bg-white hover:shadow-md transition-all duration-300 flex flex-col justify-between">
+              {cover && (
+                <div className="h-36 bg-zinc-100 overflow-hidden">
+                  <img src={cover} alt={item.name} className="w-full h-full object-cover" />
+                </div>
+              )}
               <div className="p-5 space-y-3.5">
                 <div className="flex justify-between items-start gap-2">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadgeClass(item.status)}`}>
@@ -134,7 +143,8 @@ export default function VendorListingsPage() {
                 </Link>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -31,7 +31,7 @@ export function proxy(request: NextRequest) {
       role === "vendor" &&
       (pathname === "/vendor/login" || pathname === "/vendor/register")
     ) {
-      return NextResponse.redirect(new URL("/vendor/profile", request.url));
+      return NextResponse.redirect(new URL("/vendor/dashboard", request.url));
     }
 
     if (pathname.startsWith("/vendor") && 

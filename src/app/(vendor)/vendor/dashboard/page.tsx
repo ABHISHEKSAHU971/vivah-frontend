@@ -26,14 +26,20 @@ interface ConfirmedBooking {
 export default function VendorDashboard() {
   const router = useRouter();
   const [bookings, setBookings] = useState<ConfirmedBooking[]>([]);
+  const [listingCount, setListingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get("/bookings/vendor/bookings/")
-      .then((res) => {
-        const data = res.data.data?.bookings || res.data.bookings || res.data.results || res.data || [];
+    Promise.all([
+      api.get("/bookings/vendor/bookings/"),
+      api.get("/listings/"),
+    ])
+      .then(([bookingRes, listingRes]) => {
+        const data = bookingRes.data.data?.bookings || bookingRes.data.bookings || bookingRes.data.results || bookingRes.data || [];
         setBookings(data);
+        const listingData = listingRes.data.data?.listings || listingRes.data.listings || [];
+        setListingCount(Array.isArray(listingData) ? listingData.length : 0);
       })
       .catch((err) => {
         console.error("[fetch vendor bookings error]", err);
@@ -57,7 +63,7 @@ export default function VendorDashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
-          { label: "Active Listings", val: "2", icon: Star, color: "text-amber-500 bg-amber-50" },
+          { label: "Active Services", val: String(listingCount), icon: Star, color: "text-amber-500 bg-amber-50" },
           { label: "Confirmed Bookings", val: String(bookings.length), icon: Calendar, color: "text-blue-500 bg-blue-50" },
           { label: "Total Guests Covered", val: String(bookings.reduce((sum, b) => sum + (b.guest_count || 0), 0)), icon: Users, color: "text-emerald-500 bg-emerald-50" },
           { label: "Total Booked Revenue", val: `\u20b9${(totalEarnings / 100000).toFixed(1)}L`, icon: DollarSign, color: "text-purple-500 bg-purple-50" },

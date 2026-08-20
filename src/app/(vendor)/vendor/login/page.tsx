@@ -81,7 +81,7 @@ export default function VendorLogin() {
       if (res.needs_onboarding) {
         router.push("/vendor/onboarding");
       } else {
-        router.push("/vendor/profile");
+        router.push("/vendor/dashboard");
       }
     } catch (err: unknown) {
       console.error("[verifyOtp error]", err);

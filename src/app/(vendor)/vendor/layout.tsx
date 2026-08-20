@@ -2,20 +2,48 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Store, Wrench, User, LogOut, Bell } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LayoutDashboard, Store, User, LogOut, Bell } from "lucide-react";
 import { useStore } from "@/store/store";
-import { authApi } from "@/lib/authApi";
+import { authApi, vendorApi } from "@/lib/authApi";
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const clearSession = useStore((s) => s.clearSession);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
   // Skip layout rendering on login/register/onboarding routes
-  const isAuthRoute = 
-    pathname === "/vendor/login" || 
-    pathname === "/vendor/register" || 
+  const isAuthRoute =
+    pathname === "/vendor/login" ||
+    pathname === "/vendor/register" ||
     pathname === "/vendor/onboarding";
+
+  useEffect(() => {
+    if (isAuthRoute) {
+      setCheckingOnboarding(false);
+      return;
+    }
+    let cancelled = false;
+    vendorApi
+      .getStatus()
+      .then((status) => {
+        if (cancelled) return;
+        if (!status.onboarded) {
+          router.replace("/vendor/onboarding");
+          return;
+        }
+        setCheckingOnboarding(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          router.replace("/vendor/onboarding");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthRoute, pathname, router]);
 
   const handleLogout = async () => {
     // Blacklist the refresh token server-side, then clear local state
@@ -26,11 +54,19 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
       // Proceed with local logout even if API call fails
     }
     clearSession();
-    router.push("/");
+    router.push("/vendor/login");
   };
 
   if (isAuthRoute) {
     return <>{children}</>;
+  }
+
+  if (checkingOnboarding) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center text-sm text-gray-400">
+        Loading business setup…
+      </div>
+    );
   }
 
   return (
@@ -49,7 +85,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <nav className="space-y-1.5">
             {[
               { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-              { href: "/vendor/listings", icon: Store, label: "My Listings" },
+              { href: "/vendor/listings", icon: Store, label: "My Services" },
             ].map(({ href, icon: Icon, label }) => {
               const active = pathname === href || pathname.startsWith(href + "/");
               return (

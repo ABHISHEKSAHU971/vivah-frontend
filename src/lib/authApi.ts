@@ -8,6 +8,7 @@ import { api } from "./api";
 export interface SendOTPRequest {
   phone: string;
   role?: "customer" | "vendor";
+  intent?: "login" | "register";
 }
 
 export interface SendOTPResponse {
@@ -47,8 +48,8 @@ export interface VendorOnboardRequest {
   description?: string;
   city: string;
   state?: string;
-  address?: string;
-  gstin?: string;
+  address: string;
+  gstin: string;
 }
 
 export type VendorType =
@@ -77,6 +78,8 @@ export interface VendorProfileData {
   logo: string | null;
   is_approved: boolean;
   rejection_reason: string;
+  cover_image?: string | null;
+  decoration_packages?: any[];
   catering_business?: any;
   details?: any;
   photographer_profile?: any;

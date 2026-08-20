@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/store/store";
 import { vendorApi, type VendorType } from "@/lib/authApi";
+import { isValidGstin } from "@/lib/gstin";
+import { INDIAN_STATES, CITIES_BY_STATE } from "@/lib/indiaLocations";
 import { ClipboardList, ArrowRight, ShieldAlert, Check, MapPin, Building2, User, Mail, Tag, FileText } from "lucide-react";
 
 const VENDOR_TYPES: { value: VendorType; label: string; icon: string }[] = [
@@ -18,15 +20,7 @@ const VENDOR_TYPES: { value: VendorType; label: string; icon: string }[] = [
   { value: "other",       label: "Other",           icon: "🏷️" },
 ];
 
-const MP_CITIES = [
-  "Bhopal", "Indore", "Jabalpur", "Gwalior", "Ujjain",
-  "Sagar", "Dewas", "Satna", "Ratlam", "Rewa",
-];
-
-const STATES = [
-  "Madhya Pradesh", "Maharashtra", "Rajasthan", "Uttar Pradesh",
-  "Gujarat", "Delhi", "Karnataka", "Tamil Nadu",
-];
+const MP_CITIES = CITIES_BY_STATE["Madhya Pradesh"];
 
 export default function VendorOnboarding() {
   const router = useRouter();
@@ -51,8 +45,12 @@ export default function VendorOnboarding() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.full_name.trim() || !form.business_name.trim() || !form.city.trim()) {
-      setError("Full name, business name, and city are required.");
+    if (!form.full_name.trim() || !form.business_name.trim() || !form.city.trim() || !form.address.trim() || !form.gstin.trim()) {
+      setError("Please fill all business details: name, business name, city, address, and GSTIN.");
+      return;
+    }
+    if (!isValidGstin(form.gstin)) {
+      setError("Enter a valid 15-character GSTIN (e.g. 23AAAAA1111A1Z1).");
       return;
     }
     setError("");
@@ -66,11 +64,11 @@ export default function VendorOnboarding() {
         description: form.description.trim() || undefined,
         city: form.city,
         state: form.state,
-        address: form.address.trim() || undefined,
-        gstin: form.gstin.trim() || undefined,
+        address: form.address.trim(),
+        gstin: form.gstin.trim(),
       });
       setVendorProfile(profile);
-      router.push("/vendor/profile");
+      router.push("/vendor/dashboard");
     } catch (err: unknown) {
       const axiosErr = err as {
         response?: { data?: { detail?: string; message?: string; error?: string; errors?: Record<string, string[]> } };
@@ -222,7 +220,7 @@ export default function VendorOnboarding() {
                   onChange={(e) => set("city", e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-gold/50 cursor-pointer"
                 >
-                  {MP_CITIES.map((c) => (
+                  {(CITIES_BY_STATE[form.state] || MP_CITIES).map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                   <option value="Other">Other</option>
@@ -234,10 +232,18 @@ export default function VendorOnboarding() {
                 </label>
                 <select
                   value={form.state}
-                  onChange={(e) => set("state", e.target.value)}
+                  onChange={(e) => {
+                    const nextState = e.target.value;
+                    const cities = CITIES_BY_STATE[nextState] || [];
+                    setForm((prev) => ({
+                      ...prev,
+                      state: nextState,
+                      city: cities.includes(prev.city) ? prev.city : (cities[0] || ""),
+                    }));
+                  }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-gold/50 cursor-pointer"
                 >
-                  {STATES.map((s) => (
+                  {INDIAN_STATES.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -247,7 +253,7 @@ export default function VendorOnboarding() {
             {/* Address */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-                Full Address (optional)
+                Full Address *
               </label>
               <input
                 type="text"
@@ -261,7 +267,7 @@ export default function VendorOnboarding() {
             {/* GSTIN */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-                GSTIN / Registration Number (optional)
+                GSTIN / Registration Number *
               </label>
               <input
                 type="text"
@@ -271,8 +277,8 @@ export default function VendorOnboarding() {
                 maxLength={15}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gold/50 font-mono tracking-wider transition-colors"
               />
-              {form.gstin && form.gstin.length !== 15 && (
-                <p className="text-[10px] text-amber-400">GSTIN must be exactly 15 characters</p>
+              {form.gstin && !isValidGstin(form.gstin) && (
+                <p className="text-[10px] text-amber-400">Enter a valid 15-character GSTIN (e.g. 23AAAAA1111A1Z1)</p>
               )}
             </div>
 
