@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Check, 
+  CheckCircle, 
   X, 
   ShieldAlert, 
   Building, 
@@ -118,9 +119,29 @@ interface Booking {
   created_at: string;
 }
 
+interface PendingVenue {
+  id: number;
+  name: string;
+  venue_type: string;
+  city: string;
+  state: string;
+  max_capacity: number;
+  min_capacity?: number | null;
+  price_per_day: string | number;
+  is_verified: boolean;
+  created_at: string;
+  cover_image?: string | null;
+  images?: { image: string; is_default?: boolean }[];
+  vendor?: { business_name?: string; gstin?: string } | null;
+  vendor_name?: string;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"approvals" | "listings" | "queries" | "bookings">("approvals");
+  const [activeTab, setActiveTab] = useState<"approvals" | "venues" | "listings" | "queries" | "bookings">("approvals");
+  // Venues awaiting admin verification — until verified they stay off /venues.
+  const [pendingVenues, setPendingVenues] = useState<PendingVenue[]>([]);
+  const [venueSearch, setVenueSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<string | null>(null);
 
@@ -226,6 +247,9 @@ export default function AdminDashboard() {
       const listingRes = await api.get("/listings/admin/");
       setListings(listingRes.data?.data?.listings || []);
 
+      const pendingVenueRes = await api.get("/venues/venues/pending-verification/");
+      setPendingVenues(pendingVenueRes.data?.data?.venues || []);
+
       const inquiryQuery = selectedVenueId !== "all" ? `?venue_id=${selectedVenueId}` : "";
       const inquiryRes = await api.get(`/venues/admin/inquiries/${inquiryQuery}`);
       setInquiries(inquiryRes.data?.data?.inquiries || []);
@@ -276,6 +300,25 @@ export default function AdminDashboard() {
   const triggerToast = (msg: string) => {
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 4000);
+  };
+
+  /**
+   * Verify / un-verify a venue. A venue only appears on the public /venues
+   * catalog once its vendor is approved AND the venue itself is verified.
+   */
+  const handleVenueVerification = async (venueId: number, verify: boolean) => {
+    setSubmitting(true);
+    try {
+      await api.post(`/venues/venues/${venueId}/${verify ? "verify" : "unverify"}/`);
+      setPendingVenues((prev) =>
+        verify ? prev.filter((v) => v.id !== venueId) : prev
+      );
+      triggerToast(verify ? "Venue approved — it is now live on /venues." : "Venue verification revoked.");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to update venue.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleApprove = async (profileId: number) => {
@@ -678,6 +721,23 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={() => setActiveTab("venues")}
+            className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
+              activeTab === "venues"
+                ? "border-indigo-600 text-indigo-600 bg-white"
+                : "border-transparent text-gray-500 hover:text-gray-900 hover:bg-slate-50"
+            }`}
+          >
+            <Building size={15} />
+            Venue Approvals
+            {pendingVenues.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-[9px] font-bold text-white bg-amber-500 rounded-full">
+                {pendingVenues.length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab("listings")}
             className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
               activeTab === "listings"
@@ -883,6 +943,132 @@ export default function AdminDashboard() {
           )}
 
           {/* TAB 2: VENDOR LISTINGS */}
+          {/* TAB: VENUE APPROVALS */}
+          {activeTab === "venues" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 font-heading">Venues Awaiting Approval</h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    A venue stays off the public catalog until you approve it here — and its vendor must be approved too.
+                  </p>
+                </div>
+                <div className="relative sm:w-72">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Search venue, city or vendor..."
+                    value={venueSearch}
+                    onChange={(e) => setVenueSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const q = venueSearch.trim().toLowerCase();
+                const rows = pendingVenues.filter((v) =>
+                  !q ||
+                  [v.name, v.city, v.state, v.vendor?.business_name, v.vendor_name]
+                    .some((f) => (f || "").toString().toLowerCase().includes(q))
+                );
+
+                if (rows.length === 0) {
+                  return (
+                    <div className="min-h-[240px] flex flex-col items-center justify-center gap-3 text-center border border-dashed border-gray-200 rounded-2xl bg-slate-50/60">
+                      <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center border border-emerald-100">
+                        <CheckCircle size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {pendingVenues.length === 0 ? "No venues awaiting approval" : "No venues match your search"}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {pendingVenues.length === 0
+                            ? "New venues will appear here as soon as vendors submit them."
+                            : "Try a different venue, city or vendor name."}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {rows.map((venue) => {
+                      const cover =
+                        venue.cover_image ||
+                        venue.images?.find((i) => i.is_default)?.image ||
+                        venue.images?.[0]?.image;
+                      const vendorName = venue.vendor?.business_name || venue.vendor_name || "Unknown vendor";
+                      return (
+                        <div
+                          key={venue.id}
+                          className="border border-gray-150 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
+                        >
+                          <div className="flex gap-4 p-4">
+                            <div className="w-24 h-24 shrink-0 rounded-xl bg-slate-100 border border-gray-100 overflow-hidden flex items-center justify-center">
+                              {cover ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={cover} alt={venue.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <Building size={20} className="text-gray-300" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-grow space-y-1.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="text-sm font-bold text-gray-900 font-heading truncate">{venue.name}</h4>
+                                <span className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-200">
+                                  Pending
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-500 truncate">{vendorName}</p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
+                                <span className="capitalize">{(venue.venue_type || "").replace(/_/g, " ")}</span>
+                                <span>{venue.city}, {venue.state}</span>
+                                <span>
+                                  {venue.min_capacity ? `${venue.min_capacity}–` : "up to "}
+                                  {venue.max_capacity} guests
+                                </span>
+                                <span>&#8377;{Number(venue.price_per_day || 0).toLocaleString("en-IN")}/day</span>
+                              </div>
+                              {venue.vendor?.gstin && (
+                                <p className="text-[10px] text-gray-400 font-mono">GSTIN {venue.vendor.gstin}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-auto flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-t border-gray-100">
+                            <span className="text-[10px] text-gray-400">
+                              Submitted {new Date(venue.created_at).toLocaleDateString()}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`/venues/${venue.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-900 transition-all"
+                              >
+                                Preview
+                              </a>
+                              <button
+                                onClick={() => handleVenueVerification(venue.id, true)}
+                                disabled={submitting}
+                                className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-all shadow-sm"
+                              >
+                                Approve &amp; publish
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {activeTab === "listings" && (
             <div className="space-y-6">
               

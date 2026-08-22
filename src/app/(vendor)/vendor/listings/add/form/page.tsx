@@ -464,17 +464,31 @@ function AddListingForm() {
           errors["details.photography_types"] = "Select at least one photography type";
         } else {
           detailForm.services.forEach((s: any, idx: number) => {
-            if (!s.price_per_day) {
-              errors[`details.services.${idx}.price_per_day`] = "Price per day is required";
+            if (!s.price_per_day || Number(s.price_per_day) <= 0) {
+              errors[`details.services.${idx}.price_per_day`] = "Price per day must be greater than 0";
             }
           });
         }
       } else if (type === "makeup") {
-        if (!detailForm.bridal_package_price) errors["details.bridal_package_price"] = "Bridal price is required";
-        if (!detailForm.party_makeup_price) errors["details.party_makeup_price"] = "Party makeup price is required";
+        if (!detailForm.bridal_package_price || Number(detailForm.bridal_package_price) <= 0) {
+          errors["details.bridal_package_price"] = "Bridal price must be greater than 0";
+        }
+        if (!detailForm.party_makeup_price || Number(detailForm.party_makeup_price) <= 0) {
+          errors["details.party_makeup_price"] = "Party makeup price must be greater than 0";
+        }
       } else if (type === "planner") {
-        if (!detailForm.budget_min) errors["details.budget_min"] = "Min budget is required";
-        if (!detailForm.budget_max) errors["details.budget_max"] = "Max budget is required";
+        if (!detailForm.budget_min || Number(detailForm.budget_min) <= 0) {
+          errors["details.budget_min"] = "Min budget must be greater than 0";
+        }
+        if (!detailForm.budget_max || Number(detailForm.budget_max) <= 0) {
+          errors["details.budget_max"] = "Max budget must be greater than 0";
+        }
+        if (
+          detailForm.budget_min && detailForm.budget_max &&
+          Number(detailForm.budget_min) >= Number(detailForm.budget_max)
+        ) {
+          errors["details.budget_max"] = "Max budget must be greater than min budget";
+        }
       } else if (type === "venue") {
         if (!detailForm.price_per_day || Number(detailForm.price_per_day) <= 0) {
           errors["details.price_per_day"] = "Daily rent must be greater than 0";
@@ -497,7 +511,9 @@ function AddListingForm() {
         } else {
           detailForm.packages.forEach((pkg: any, idx: number) => {
             if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
-            if (!pkg.price) errors[`details.packages.${idx}.price`] = "Price is required";
+            if (!pkg.price || Number(pkg.price) <= 0) {
+              errors[`details.packages.${idx}.price`] = "Price must be greater than 0";
+            }
             if (pkg.equipment && pkg.equipment.length > 0) {
               pkg.equipment.forEach((eq: any, eqIdx: number) => {
                 if (eq.quantity > eq.quantity_available) {
@@ -710,28 +726,7 @@ function AddListingForm() {
           </div>
         </div>
 
-        {type === "venue" ? (
-          <div className="hidden md:block w-64 shrink-0 bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-900">
-            <p className="font-bold uppercase tracking-wider text-amber-700 mb-1.5">Venue checklist</p>
-            <ul className="space-y-1 list-disc pl-3.5">
-              <li>Min guest capacity is optional</li>
-              <li>Add pool if the venue has one</li>
-              <li>Numeric fields must be above 0</li>
-              <li>Upload photos by folder (rooms, garden…)</li>
-              <li>Set a default cover photo</li>
-            </ul>
-          </div>
-        ) : type === "decorator" ? (
-          <div className="hidden md:block w-64 shrink-0 bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-900">
-            <p className="font-bold uppercase tracking-wider text-amber-700 mb-1.5">Decoration checklist</p>
-            <ul className="space-y-1 list-disc pl-3.5">
-              <li>Add package name, style, and inclusions</li>
-              <li>Fill at least one pricing tier</li>
-              <li>Upload photos by folder (mandap, stage…)</li>
-              <li>Set a default cover for listing cards</li>
-            </ul>
-          </div>
-        ) : (
+        {/* Step indicator — shown for every service type. */}
         <div className="hidden sm:flex items-center gap-1.5 bg-zinc-50 border border-gray-150 px-3.5 py-1.5 rounded-full">
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 1 ? "bg-gold" : "bg-gray-250"}`} />
           <div className="w-6 h-0.5 bg-gray-200" />
@@ -745,7 +740,6 @@ function AddListingForm() {
             </>
           )}
         </div>
-        )}
       </div>
 
       {errorMsg && (
