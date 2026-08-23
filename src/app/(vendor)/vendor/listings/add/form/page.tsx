@@ -528,9 +528,6 @@ function AddListingForm() {
         themes.forEach((theme: any, ti: number) => {
           if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
           if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
-          if (!theme.includes || theme.includes.length === 0) {
-            errors[`themes.${ti}.includes`] = "Add at least one common inclusion";
-          }
           const pkgs = theme.tiers || [];
           if (pkgs.length === 0) {
             errors[`themes.${ti}.tiers`] = "Add at least one package";

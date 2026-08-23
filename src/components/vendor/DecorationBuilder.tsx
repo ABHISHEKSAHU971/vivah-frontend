@@ -90,20 +90,99 @@ const inputCls =
   "w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] transition-all";
 const labelCls = "text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-1.5";
 
-/** Free-form list input: type, press Enter, get a removable chip. */
+
+export const COMMON_INCLUSION_TAGS = [
+  "Haldi Setup",
+  "Sangeet Stage",
+  "Mehendi Backdrop",
+  "Reception Stage",
+  "Floral Mandap",
+  "Welcome Gate",
+  "Stage Backdrop",
+  "Selfie Point",
+  "Jhula Decor",
+  "Pathway Draping",
+  "Varmala Stage",
+  "LED & Ambient Lights",
+];
+
+export const COMMON_EXCLUSION_TAGS = [
+  "Catering",
+  "Sound & DJ System",
+  "Generator & Power Backup",
+  "Venue Booking Fee",
+  "Personal Floral Jewelry",
+  "Photography & Videography",
+];
+
+export const COLOUR_THEME_TAGS = [
+  "Marigold Yellow",
+  "Pastel Pink",
+  "Ivory & Gold",
+  "Royal Red",
+  "Lavender & White",
+  "Emerald Green",
+];
+
+export const FLOWER_TAGS = [
+  "Marigold",
+  "Rose",
+  "Jasmine",
+  "Orchid",
+  "Carnation",
+  "Lotus",
+  "Baby's Breath",
+];
+
+export const MATERIAL_TAGS = [
+  "Fresh Flowers",
+  "Artificial Flowers",
+  "Brass Props",
+  "Wooden Mandap",
+  "Velvet Drapes",
+  "Fairy Lights",
+];
+
+export const DRAPERY_TAGS = [
+  "Velvet Drapes",
+  "Chiffon & Organza",
+  "Satin Drapes",
+  "Gold Zari Drapes",
+  "Floral Draping",
+];
+
+export const LIGHTING_TAGS = [
+  "Warm Ambient Lights",
+  "Fairy Lights",
+  "Chandeliers",
+  "LED Spotlights",
+  "Cold Pyro Sparklers",
+];
+
+/** Free-form list input with quick-add suggestion tags: type, press Enter, or click tags. */
 function ChipInput({
-  label, hint, placeholder, values, onChange,
+  label, hint, placeholder, values, onChange, suggestions,
 }: {
   label: string; hint?: string; placeholder: string;
   values: string[]; onChange: (next: string[]) => void;
+  suggestions?: string[];
 }) {
   const [draft, setDraft] = useState("");
 
-  const add = () => {
-    const v = draft.trim();
+  const add = (text?: string) => {
+    const v = (text ?? draft).trim();
     if (!v) return;
     if (!values.some((x) => x.toLowerCase() === v.toLowerCase())) onChange([...values, v]);
-    setDraft("");
+    if (!text) setDraft("");
+  };
+
+  const toggleSuggestion = (sug: string) => {
+    const exists = values.some((x) => x.toLowerCase() === sug.toLowerCase());
+    if (exists) {
+      onChange(values.filter((x) => x.toLowerCase() !== sug.toLowerCase()));
+    } else {
+      onChange([...values, sug]);
+    }
   };
 
   return (
@@ -123,15 +202,53 @@ function ChipInput({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-          onBlur={add}
+          onBlur={() => add()}
           placeholder={placeholder}
           className="flex-grow min-w-[140px] px-1.5 py-1 text-sm bg-transparent focus:outline-none text-gray-900 placeholder-gray-400"
         />
       </div>
+
+      {suggestions && suggestions.length > 0 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            Popular Quick Add Tags:
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((sug) => {
+              const isSelected = values.some((x) => x.toLowerCase() === sug.toLowerCase());
+              return (
+                <button
+                  key={sug}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggleSuggestion(sug)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                    isSelected
+                      ? "bg-gold text-white shadow-xs border border-gold"
+                      : "bg-gray-100 hover:bg-gold/10 hover:text-gold hover:border-gold/30 text-gray-700 border border-gray-200"
+                  }`}
+                >
+                  {isSelected ? (
+                    <>
+                      <span className="font-bold">✓</span> {sug}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-400 font-bold">+</span> {sug}
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {hint && <p className="text-[10px] text-gray-400 mt-1">{hint}</p>}
     </div>
   );
 }
+
 
 function Section({
   index, title, requirement, subtitle, children, defaultOpen = false, hasError = false,
@@ -140,8 +257,6 @@ function Section({
   children: React.ReactNode; defaultOpen?: boolean; hasError?: boolean;
 }) {
   const [manuallyOpen, setManuallyOpen] = useState(defaultOpen);
-  // A section holding a validation error is always expanded, so the failing
-  // field can never be hidden behind a collapsed header.
   const open = manuallyOpen || hasError;
   const setOpen = (fn: (p: boolean) => boolean) => setManuallyOpen((p) => fn(open));
   return (
@@ -258,20 +373,25 @@ export function DecorationBuilder({
             subtitle="Colours, flowers, materials, drapery and lighting">
             <ChipInput label="Colour theme" placeholder="Add a colour" values={theme.colour_theme}
               onChange={(v) => patch(ti, { colour_theme: v })}
+              suggestions={COLOUR_THEME_TAGS}
               hint="e.g. Marigold Orange, Ivory, Deep Red" />
             <ChipInput label="Flowers" placeholder="Add a flower" values={theme.flowers}
-              onChange={(v) => patch(ti, { flowers: v })} />
+              onChange={(v) => patch(ti, { flowers: v })}
+              suggestions={FLOWER_TAGS} />
             <ChipInput label="Materials" placeholder="Add a material" values={theme.materials}
-              onChange={(v) => patch(ti, { materials: v })} />
+              onChange={(v) => patch(ti, { materials: v })}
+              suggestions={MATERIAL_TAGS} />
             <ChipInput label="Drapery" placeholder="Add drapery type" values={theme.drapery}
-              onChange={(v) => patch(ti, { drapery: v })} />
+              onChange={(v) => patch(ti, { drapery: v })}
+              suggestions={DRAPERY_TAGS} />
             <div>
               <label className={labelCls}>Drapery notes</label>
               <input value={theme.drapery_notes} onChange={(e) => patch(ti, { drapery_notes: e.target.value })}
                 placeholder="Gold & cream fabric draping" className={inputCls} />
             </div>
             <ChipInput label="Lighting" placeholder="Add lighting type" values={theme.lighting}
-              onChange={(v) => patch(ti, { lighting: v })} />
+              onChange={(v) => patch(ti, { lighting: v })}
+              suggestions={LIGHTING_TAGS} />
             <div>
               <label className={labelCls}>Lighting notes</label>
               <input value={theme.lighting_notes} onChange={(e) => patch(ti, { lighting_notes: e.target.value })}
@@ -286,21 +406,8 @@ export function DecorationBuilder({
             </div>
           </Section>
 
-          {/* 3 — What's included */}
-          <Section index={3} title="What's included" requirement="Required" hasError={sectionHasError(ti, ["includes", "excludes"])}
-            subtitle="Applied to every package by default">
-            <ChipInput label="Common inclusions *" placeholder="Search or add a custom item"
-              values={theme.includes} onChange={(v) => patch(ti, { includes: v })}
-              hint="e.g. Floral mandap, Welcome gate, Stage backdrop" />
-            {errors[`themes.${ti}.includes`] && (
-              <p className="text-[10px] text-red-500 font-semibold">{errors[`themes.${ti}.includes`]}</p>
-            )}
-            <ChipInput label="Not included (theme level)" placeholder="e.g. Catering"
-              values={theme.excludes} onChange={(v) => patch(ti, { excludes: v })} />
-          </Section>
-
-          {/* 4 — Packages & pricing */}
-          <Section index={4} title="Packages & pricing" requirement="Required" hasError={sectionHasError(ti, ["tiers"])}
+          {/* 3 — Packages & pricing */}
+          <Section index={3} title="Packages & pricing" requirement="Required" hasError={sectionHasError(ti, ["tiers"])}
             subtitle="Create as many packages as you like — no fixed tiers" defaultOpen>
             {theme.tiers.length === 0 && (
               <p className="text-xs text-gray-400 py-3 text-center">
@@ -372,9 +479,11 @@ export function DecorationBuilder({
                 </div>
 
                 <ChipInput label="Package-specific inclusions" placeholder="e.g. Premium Stage Decoration"
-                  values={pkg.inclusions} onChange={(v) => patchPackage(ti, pi, { inclusions: v })} />
+                  values={pkg.inclusions} onChange={(v) => patchPackage(ti, pi, { inclusions: v })}
+                  suggestions={COMMON_INCLUSION_TAGS} />
                 <ChipInput label="What's not included" placeholder="e.g. Generator"
-                  values={pkg.excludes} onChange={(v) => patchPackage(ti, pi, { excludes: v })} />
+                  values={pkg.excludes} onChange={(v) => patchPackage(ti, pi, { excludes: v })}
+                  suggestions={COMMON_EXCLUSION_TAGS} />
               </div>
             ))}
 
@@ -384,8 +493,8 @@ export function DecorationBuilder({
             </button>
           </Section>
 
-          {/* 5 — Optional add-ons */}
-          <Section index={5} title="Optional add-ons" requirement="Optional"
+          {/* 4 — Optional add-ons */}
+          <Section index={4} title="Optional add-ons" requirement="Optional"
             subtitle="Extras customers can buy on top of any package">
             <p className="text-[11px] text-gray-400">
               Examples: LED Wall — ₹8,000 · Extra Floral Decoration — ₹5,000 · Premium Lighting — ₹7,500
@@ -411,8 +520,8 @@ export function DecorationBuilder({
             </button>
           </Section>
 
-          {/* 6 — Commercials & policies */}
-          <Section index={6} title="Commercials & policies" requirement="Optional"
+          {/* 5 — Commercials & policies */}
+          <Section index={5} title="Commercials & policies" requirement="Optional"
             subtitle="Advance, setup time, travel and cancellation">
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
