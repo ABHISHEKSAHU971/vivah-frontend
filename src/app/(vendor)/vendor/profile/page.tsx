@@ -421,7 +421,7 @@ export default function VendorProfile() {
         className="console-card console-card-hover flex items-center justify-between gap-4 px-6 py-4 group"
       >
         <div className="flex items-center gap-3">
-          <span className="console-tile tile-amber"><Bell size={17} /></span>
+          <span className="console-tile tile-gold"><Bell size={17} /></span>
           <div className="text-left">
             <h2 className="font-semibold text-[#101828] text-[15px]">Booking Requests</h2>
             <p className="text-[11px] text-[#98A2B3]">

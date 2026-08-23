@@ -8,6 +8,8 @@ import {
   Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { citiesForState } from "@/lib/indiaLocations";
+import { DecorationBuilder, emptyTheme } from "@/components/vendor/DecorationBuilder";
 
 const CUISINE_CHOICES = [
   { value: "veg", label: "Pure Veg" },
@@ -43,16 +45,6 @@ const SERVICE_POLICIES = [
   { value: "both", label: "In-House + Outside Allowed" },
 ];
 
-const DECORATOR_STYLES = [
-  { value: "royal", label: "Royal" },
-  { value: "floral", label: "Floral" },
-  { value: "minimal", label: "Minimal Luxury" },
-  { value: "bollywood", label: "Bollywood" },
-  { value: "traditional", label: "Traditional" },
-  { value: "modern", label: "Modern Premium" },
-  { value: "cultural", label: "Cultural" },
-  { value: "outdoor", label: "Outdoor Garden" },
-];
 
 const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-wedding"];
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
@@ -180,6 +172,7 @@ function EditListingForm() {
     city: "",
     state: "",
     address: "",
+    owner_phone: "",
   });
 
   // Category specific fields
@@ -214,6 +207,7 @@ function EditListingForm() {
           city: item.city || "",
           state: item.state || "",
           address: item.address || "",
+          owner_phone: item.details?.owner_phone || "",
         });
         const details = item.details || {};
         if (["caterer"].includes(item.service_type) && !details.tier) {
@@ -223,6 +217,40 @@ function EditListingForm() {
         if (item.service_type === "dj") {
           const pkgArray = Array.isArray(item.details) ? item.details : [];
           setDetailForm({ packages: pkgArray });
+        } else if (item.service_type === "decorator") {
+          // Decorator details come back as a list of themes. Map each onto the
+          // builder's shape, coercing numbers to strings for the inputs.
+          const raw = Array.isArray(item.details) ? item.details : (details?.themes || (details?.name ? [details] : []));
+          const themes = raw.map((t: any) => ({
+            ...emptyTheme(),
+            ...t,
+            advance_percent: t.advance_percent != null ? String(t.advance_percent) : "",
+            setup_time_hours: t.setup_time_hours != null ? String(t.setup_time_hours) : "",
+            travel_policy: t.travel_policy || "",
+            cancellation_policy: t.cancellation_policy || "",
+            colour_theme: t.colour_theme || [],
+            flowers: t.flowers || [],
+            materials: t.materials || [],
+            drapery: t.drapery || [],
+            lighting: t.lighting || [],
+            includes: t.includes || [],
+            excludes: t.excludes || [],
+            tiers: (t.tiers || []).map((pkg: any) => ({
+              name: pkg.name || "",
+              tier: pkg.tier || "",
+              price: pkg.price != null ? String(pkg.price) : "",
+              description: pkg.description || "",
+              min_guests: pkg.min_guests != null ? String(pkg.min_guests) : "",
+              max_guests: pkg.max_guests != null ? String(pkg.max_guests) : "",
+              inclusions: pkg.inclusions || [],
+              excludes: pkg.excludes || [],
+            })),
+            add_ons: (t.add_ons || []).map((a: any) => ({
+              name: a.name || "",
+              price: a.price != null ? String(a.price) : "",
+            })),
+          }));
+          setDetailForm({ themes: themes.length ? themes : [emptyTheme()] });
         } else {
           setDetailForm(details);
         }
@@ -289,6 +317,9 @@ function EditListingForm() {
       if (!baseForm.name.trim()) errors.name = "Listing Name is required";
       if (!baseForm.description.trim()) errors.description = "Description is required";
       if (!baseForm.address.trim()) errors.address = "Complete Address is required";
+      if (type === "caterer" && !baseForm.owner_phone.trim()) {
+        errors.owner_phone = "Owner phone number is required";
+      }
       if (!baseForm.city.trim()) errors.city = "City is required";
       if (!baseForm.state.trim()) errors.state = "State is required";
     } else if (type === "caterer") {
@@ -331,8 +362,21 @@ function EditListingForm() {
         if (!detailForm.budget_min) errors["details.budget_min"] = "Min budget is required";
         if (!detailForm.budget_max) errors["details.budget_max"] = "Max budget is required";
       } else if (type === "venue") {
-        if (!detailForm.price_per_day) errors["details.price_per_day"] = "Daily rent is required";
-        if (!detailForm.max_capacity) errors["details.max_capacity"] = "Max capacity is required";
+        if (!detailForm.price_per_day || Number(detailForm.price_per_day) <= 0) {
+          errors["details.price_per_day"] = "Daily rent must be greater than 0";
+        }
+        if (!detailForm.max_capacity || Number(detailForm.max_capacity) <= 0) {
+          errors["details.max_capacity"] = "Max capacity must be greater than 0";
+        }
+        if (detailForm.min_capacity !== "" && detailForm.min_capacity != null && Number(detailForm.min_capacity) <= 0) {
+          errors["details.min_capacity"] = "Minimum guest capacity must be greater than 0 when provided";
+        }
+        if (detailForm.min_capacity && detailForm.max_capacity && Number(detailForm.min_capacity) >= Number(detailForm.max_capacity)) {
+          errors["details.max_capacity"] = "Maximum capacity must be greater than minimum capacity";
+        }
+        if (detailForm.dormitory_capacity !== "" && detailForm.dormitory_capacity != null && Number(detailForm.dormitory_capacity) <= 0) {
+          errors["details.dormitory_capacity"] = "Dormitory capacity must be greater than 0 when provided";
+        }
       } else if (type === "dj") {
         if (!detailForm.packages || detailForm.packages.length === 0) {
           errors["details.packages"] = "Create at least one DJ package plan tier";
@@ -343,7 +387,28 @@ function EditListingForm() {
           });
         }
       } else if (type === "decorator") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
+        const themes = detailForm.themes || [];
+        if (themes.length === 0) {
+          errors["details.themes"] = "Add at least one decoration theme";
+        }
+        themes.forEach((theme: any, ti: number) => {
+          if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
+          if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
+          if (!theme.includes || theme.includes.length === 0) {
+            errors[`themes.${ti}.includes`] = "Add at least one common inclusion";
+          }
+          const pkgs = theme.tiers || [];
+          if (pkgs.length === 0) errors[`themes.${ti}.tiers`] = "Add at least one package";
+          pkgs.forEach((pkg: any, pi: number) => {
+            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${pi}.name`] = "Package name is required";
+            if (!pkg.price || Number(pkg.price) <= 0) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Price must be greater than 0";
+            }
+            if (pkg.min_guests && pkg.max_guests && Number(pkg.min_guests) >= Number(pkg.max_guests)) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Guests up to must be greater than guests from";
+            }
+          });
+        });
       }
     }
     
@@ -403,10 +468,43 @@ function EditListingForm() {
     if (payload.details.team_size) payload.details.team_size = parseInt(payload.details.team_size);
     if (payload.details.delivery_days_limit) payload.details.delivery_days_limit = parseInt(payload.details.delivery_days_limit);
     if (payload.details.min_capacity) payload.details.min_capacity = parseInt(payload.details.min_capacity);
+    else if (type === "venue") payload.details.min_capacity = null;
     if (payload.details.max_capacity) payload.details.max_capacity = parseInt(payload.details.max_capacity);
+    if (payload.details.num_ac_rooms !== undefined) payload.details.num_ac_rooms = parseInt(payload.details.num_ac_rooms) || 0;
+    if (payload.details.num_non_ac_rooms !== undefined) payload.details.num_non_ac_rooms = parseInt(payload.details.num_non_ac_rooms) || 0;
+    if (payload.details.num_halls !== undefined) payload.details.num_halls = parseInt(payload.details.num_halls) || 0;
+    if (payload.details.dormitory_capacity) payload.details.dormitory_capacity = parseInt(payload.details.dormitory_capacity);
+    else if (type === "venue") payload.details.dormitory_capacity = null;
+    if (payload.details.max_guests) payload.details.max_guests = parseInt(payload.details.max_guests);
+    else if (type === "caterer") payload.details.max_guests = null;
+
+    // Decorator: coerce numerics on every theme/package/add-on and drop blanks.
+    if (type === "decorator" && Array.isArray(payload.details.themes)) {
+      payload.details.themes = payload.details.themes.map((theme: any) => ({
+        ...theme,
+        advance_percent: theme.advance_percent ? parseInt(theme.advance_percent) : null,
+        setup_time_hours: theme.setup_time_hours ? parseInt(theme.setup_time_hours) : null,
+        tiers: (theme.tiers || [])
+          .filter((pkg: any) => pkg.price !== "" && pkg.price != null)
+          .map((pkg: any) => ({
+            ...pkg,
+            price: parseFloat(pkg.price),
+            min_guests: pkg.min_guests ? parseInt(pkg.min_guests) : null,
+            max_guests: pkg.max_guests ? parseInt(pkg.max_guests) : null,
+          })),
+        add_ons: (theme.add_ons || [])
+          .filter((a: any) => a.name?.trim() && a.price !== "" && a.price != null)
+          .map((a: any) => ({ ...a, price: parseFloat(a.price) })),
+      }));
+    }
     if (payload.details.hours) payload.details.hours = parseInt(payload.details.hours);
 
     // Convert package fields to decimals/numbers for caterer
+    if (isCaterer) {
+      payload.details.owner_phone = baseForm.owner_phone.trim();
+      delete payload.details.citySearch;
+    }
+
     if (isCaterer && payload.details.packages) {
       payload.details.packages = payload.details.packages.map((pkg: any) => ({
         ...pkg,
@@ -625,6 +723,26 @@ function EditListingForm() {
               />
               {formErrors.address && <p className="text-[10px] text-red-500 font-semibold">{formErrors.address}</p>}
             </div>
+
+            {type === "caterer" && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Owner Phone Number *</label>
+                <input
+                  type="tel"
+                  name="owner_phone"
+                  value={baseForm.owner_phone}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setBaseForm((prev) => ({ ...prev, owner_phone: digits }));
+                  }}
+                  placeholder="10-digit mobile number"
+                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold bg-white ${
+                    formErrors.owner_phone ? "border-red-400" : "border-gray-200 text-gray-900"
+                  }`}
+                />
+                {formErrors.owner_phone && <p className="text-[10px] text-red-500 font-semibold">{formErrors.owner_phone}</p>}
+              </div>
+            )}
             {type === "caterer" && (
               <div className="space-y-4 pt-3 border-t border-gray-100">
                 <div>
@@ -738,83 +856,61 @@ function EditListingForm() {
             />
           </div>
 
-          {/* Branches Manager */}
-          <div className="space-y-4 pt-3 border-t border-gray-100">
+          {/* Max persons — parity with the add form */}
+          <div className="space-y-1.5 max-w-xs">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Maximum Persons (optional)</label>
+            <input
+              type="number"
+              min={1}
+              placeholder="e.g. 2000"
+              value={detailForm.max_guests || ""}
+              onChange={(e) => handleDetailChange("max_guests", e.target.value)}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
+                formErrors["details.max_guests"] ? "border-red-400" : "border-gray-200 text-gray-950"
+              }`}
+            />
+            {formErrors["details.max_guests"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.max_guests"]}</p>}
+          </div>
+
+          {/* Service coverage — replaces the old per-branch list */}
+          <div className="space-y-3 pt-3 border-t border-gray-100">
             <div>
-              <h3 className="text-xs font-semibold text-gray-900">Branch Locations</h3>
-              <p className="text-[10px] text-gray-400">List operational branches to service leads across multiple areas.</p>
+              <h3 className="text-xs font-semibold text-gray-900">Service provided in cities</h3>
+              <p className="text-[10px] text-gray-400">
+                Cities from {baseForm.state}. Search and select multiple service locations.
+              </p>
             </div>
-            
-            <div className="space-y-3">
-              {detailForm.branches?.map((branch: any, idx: number) => (
-                <div key={idx} className="flex gap-3 items-end p-4 border border-gray-150 rounded-xl bg-zinc-50/50">
-                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Branch Name</label>
-                      <input
-                        type="text"
-                        value={branch.name}
-                        placeholder="e.g. Main Branch"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].name = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Address</label>
-                      <input
-                        type="text"
-                        value={branch.address}
-                        placeholder="e.g. Maharana Pratap Nagar"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].address = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phone Number</label>
-                      <input
-                        type="text"
-                        value={branch.phone}
-                        placeholder="e.g. 9876543210"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].phone = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const list = detailForm.branches.filter((_: any, i: number) => i !== idx);
-                      handleDetailChange("branches", list);
-                    }}
-                    className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition-colors"
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              ))}
-              
-              <button
-                type="button"
-                onClick={() => {
-                  const list = [...(detailForm.branches || []), { name: "", address: "", phone: "" }];
-                  handleDetailChange("branches", list);
-                }}
-                className="w-full border border-dashed border-gray-300 py-3 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
-              >
-                + Add Operational Branch
-              </button>
+            <input
+              type="text"
+              placeholder={`Search cities in ${baseForm.state}...`}
+              value={detailForm.citySearch || ""}
+              onChange={(e) => handleDetailChange("citySearch", e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+            />
+            <div className="max-h-56 overflow-y-auto border border-gray-150 rounded-xl p-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {citiesForState(baseForm.state)
+                .filter((city) => city.toLowerCase().includes((detailForm.citySearch || "").toLowerCase()))
+                .map((city) => {
+                  const selected = (detailForm.service_cities || []).includes(city);
+                  return (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => {
+                        const current: string[] = detailForm.service_cities || [];
+                        const next = selected ? current.filter((c) => c !== city) : [...current, city];
+                        handleDetailChange("service_cities", next);
+                      }}
+                      className={`px-3 py-2 rounded-lg border text-xs text-left transition-all ${
+                        selected
+                          ? "bg-gold/10 text-gold border-gold font-semibold"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      }`}
+                    >
+                      {city}
+                    </button>
+                  );
+                })}
             </div>
           </div>
 
@@ -1305,7 +1401,7 @@ function EditListingForm() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity (optional)</label>
                   <input
                     type="number"
                     min={10}
@@ -1327,6 +1423,54 @@ function EditListingForm() {
                     }`}
                   />
                   {formErrors["details.max_capacity"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.max_capacity"]}</p>}
+                </div>
+              </div>
+
+              {/* Labels reserve two lines so a wrapping caption keeps its input in line. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+                <div className="space-y-1.5">
+                  <label className="form-row-label">Number of AC Rooms</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={detailForm.num_ac_rooms ?? 0}
+                    onChange={(e) => handleDetailChange("num_ac_rooms", e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="form-row-label">Number of Non-AC Rooms</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={detailForm.num_non_ac_rooms ?? 0}
+                    onChange={(e) => handleDetailChange("num_non_ac_rooms", e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="form-row-label">Number of Halls</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={detailForm.num_halls ?? 0}
+                    onChange={(e) => handleDetailChange("num_halls", e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="form-row-label">Total Capacity of Dormitory (people)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={detailForm.dormitory_capacity ?? ""}
+                    placeholder="Number of people"
+                    onChange={(e) => handleDetailChange("dormitory_capacity", e.target.value)}
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
+                      formErrors["details.dormitory_capacity"] ? "border-red-400" : "border-gray-200 text-gray-900"
+                    }`}
+                  />
+                  {formErrors["details.dormitory_capacity"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.dormitory_capacity"]}</p>}
                 </div>
               </div>
 
@@ -1393,6 +1537,7 @@ function EditListingForm() {
                   {[
                     { key: "has_parking", label: "Parking Space" },
                     { key: "has_accommodation", label: "Guest Rooms" },
+                    { key: "has_pool", label: "Swimming Pool (optional)" },
                     { key: "is_ac", label: "A/C Hall" },
                     { key: "is_outdoor", label: "Open Lawn / Garden" },
                   ].map((item) => (
@@ -1776,149 +1921,11 @@ function EditListingForm() {
 
           {/* DECORATOR */}
           {type === "decorator" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Theme Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Royal Marigold Stage Setup"
-                  value={detailForm.name || ""}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decor Style Style Theme</label>
-                <select
-                  value={detailForm.style}
-                  onChange={(e) => handleDetailChange("style", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                >
-                  {DECORATOR_STYLES.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Theme Description</label>
-                <textarea
-                  value={detailForm.description || ""}
-                  rows={4}
-                  placeholder="Provide background, color themes specs..."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Inclusions</label>
-                <div className="flex flex-wrap gap-2 items-center p-2.5 border border-gray-200 rounded-xl bg-zinc-50/30">
-                  {detailForm.includes?.map((inc: string, idx: number) => (
-                    <span key={inc} className="bg-gold/10 text-gold border border-gold/15 text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1">
-                      {inc}
-                      <button 
-                        type="button" 
-                        onClick={() => handleDetailChange("includes", detailForm.includes.filter((_: any, i: number) => i !== idx))}
-                        className="text-gray-400 hover:text-black hover:bg-gold/10 rounded-full"
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    placeholder="Add item & press Enter"
-                    className="border-none bg-transparent focus:outline-none text-xs flex-grow p-1 text-gray-900 placeholder-slate-400 min-w-[150px]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const val = e.currentTarget.value.trim();
-                        if (val && !detailForm.includes?.includes(val)) {
-                          handleDetailChange("includes", [...(detailForm.includes || []), val]);
-                          e.currentTarget.value = "";
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Decoration Tiers Table */}
-              <div className="space-y-4 pt-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Tiers (Pricing & Descriptions)</label>
-                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
-                        <th className="px-4 py-3 w-1/4">Tier</th>
-                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
-                        <th className="px-4 py-3 w-1/2">Inclusions & Area Specs</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-sm">
-                      {[
-                        { key: "low", label: "Silver (Budget)" },
-                        { key: "medium", label: "Gold (Standard)" },
-                        { key: "average", label: "Platinum (Premium)" },
-                        { key: "high", label: "Luxury (High)" }
-                      ].map(({ key, label }) => {
-                        const currentTiers = detailForm.tiers || [];
-                        let tierData = currentTiers.find((t: any) => t.tier === key);
-                        if (!tierData) {
-                          tierData = { tier: key, price: "", description: "" };
-                        }
-                        return (
-                          <tr key={key} className="hover:bg-gray-50/30">
-                            <td className="px-4 py-3 font-semibold text-gray-700">{label}</td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                placeholder={`e.g. ${key === "low" ? "15000" : key === "medium" ? "30000" : key === "average" ? "60000" : "120000"}`}
-                                value={tierData.price || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].price = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: e.target.value, description: "" });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                placeholder={`e.g. ${key === "low" ? "Standard entrance and stage backdrop (up to 400 sqft)" : key === "medium" ? "Entrance arch, stage backdrop, 10 table centerpieces (up to 800 sqft)" : "Luxury floral entry, premium stage draping, 20 centerpieces, pathway lighting"}`}
-                                value={tierData.description || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].description = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: "", description: e.target.value });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <DecorationBuilder
+              themes={detailForm.themes && detailForm.themes.length ? detailForm.themes : [emptyTheme()]}
+              onChange={(next) => handleDetailChange("themes", next)}
+              errors={formErrors}
+            />
           )}
 
           {/* Footer Controls */}
@@ -1959,7 +1966,7 @@ function EditListingForm() {
                 onChange={handleImageChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
-              <div className="w-12 h-12 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15 group-hover:bg-gold group-hover:text-black transition-all">
+              <div className="service-tile w-12 h-12 rounded-full">
                 <Upload size={20} />
               </div>
               <div className="text-center">

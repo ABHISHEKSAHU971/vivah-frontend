@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/store/store";
 import { authApi, vendorApi, type VendorStatusData } from "@/lib/authApi";
+import { BrandMark } from "@/components/BrandMark";
 
 const NAV_ITEMS = [
   { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -92,9 +93,8 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   const nav = (
     <div className="flex flex-col h-full">
       {/* Brand */}
-      <Link href="/" className="flex items-baseline gap-0.5 select-none px-2 shrink-0">
-        <span className="font-heading text-[#101828] font-bold text-lg tracking-tight">PlanMyVivah</span>
-        <span className="text-gold font-bold text-lg">.</span>
+      <Link href="/" className="group flex items-center px-2 shrink-0">
+        <BrandMark size="md" tone="dark" />
       </Link>
       <p className="px-2 mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98A2B3] shrink-0">
         Vendor Portal

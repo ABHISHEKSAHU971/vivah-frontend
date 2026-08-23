@@ -7,6 +7,7 @@ import { useStore } from "@/store/store";
 import { authApi, vendorApi, type GstLookupData } from "@/lib/authApi";
 import { isValidGstin } from "@/lib/gstin";
 import { INDIAN_STATES, CITIES_BY_STATE } from "@/lib/indiaLocations";
+import { BrandMark } from "@/components/BrandMark";
 import {
   ArrowLeft,
   ArrowRight,
@@ -211,15 +212,14 @@ export default function VendorOnboarding() {
   const cityOptions = CITIES_BY_STATE[form.state] || ALL_CITIES;
 
   return (
-    <div className="min-h-screen aurora-navy text-white font-body py-10 px-4 sm:px-6">
+    <div className="console-auth font-body py-10 px-4 sm:px-6">
       <div className="mx-auto w-full max-w-5xl space-y-6">
 
         {/* Brand */}
         <div className="flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-baseline gap-0.5 select-none">
-            <span className="font-heading text-white font-semibold text-lg tracking-tight">PlanMyVivah</span>
-            <span className="text-gold font-bold text-lg">.</span>
-            <span className="ml-2 text-[10px] bg-white/10 border border-white/10 text-zinc-300 px-1.5 py-0.5 rounded font-mono">
+          <Link href="/" className="group flex items-center gap-2">
+            <BrandMark size="md" tone="dark" />
+            <span className="text-[10px] bg-[#F4F5F7] border border-[#EAECF0] text-[#667085] px-1.5 py-0.5 rounded font-mono">
               Vendor
             </span>
           </Link>
@@ -227,7 +227,7 @@ export default function VendorOnboarding() {
             type="button"
             onClick={handleBackToLogin}
             disabled={leaving}
-            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-gold transition-colors disabled:opacity-60"
+            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-[#667085] hover:text-gold transition-colors disabled:opacity-60"
           >
             <ArrowLeft size={13} /> {leaving ? "Signing out…" : "Back to login"}
           </button>
@@ -236,17 +236,17 @@ export default function VendorOnboarding() {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6 items-start">
 
           {/* ── Aside: what happens next ─────────────────────────── */}
-          <aside className="glossy-panel rounded-2xl p-6 space-y-6 lg:sticky lg:top-10">
+          <aside className="console-card rounded-2xl p-6 space-y-6 lg:sticky lg:top-10">
             <div>
               <span className="eyebrow">Step 1 of 1</span>
               <h1 className="font-heading text-2xl font-semibold mt-1.5 leading-tight">Business Setup</h1>
-              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+              <p className="text-xs text-[#667085] mt-2 leading-relaxed">
                 Tell us who you are and where you operate. You&apos;ll add your services and pricing right
                 after this.
               </p>
             </div>
 
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-[#EAECF0]" />
 
             <ul className="space-y-4">
               {[
@@ -271,8 +271,8 @@ export default function VendorOnboarding() {
                     <Icon size={14} />
                   </span>
                   <div className="space-y-0.5">
-                    <p className="text-xs font-semibold text-zinc-100">{title}</p>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">{body}</p>
+                    <p className="text-xs font-semibold text-[#101828]">{title}</p>
+                    <p className="text-[11px] text-[#667085] leading-relaxed">{body}</p>
                   </div>
                 </li>
               ))}
@@ -280,7 +280,7 @@ export default function VendorOnboarding() {
           </aside>
 
           {/* ── Form ─────────────────────────────────────────────── */}
-          <div className="glossy-panel rounded-2xl p-6 sm:p-8">
+          <div className="console-card rounded-2xl p-6 sm:p-8">
             <form onSubmit={handleSubmit} className="space-y-8">
 
               {error && (
@@ -294,12 +294,12 @@ export default function VendorOnboarding() {
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <User size={13} className="text-gold" />
-                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">Owner details</h2>
-                  <div className="flex-grow h-px bg-white/10" />
+                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#475467]">Owner details</h2>
+                  <div className="flex-grow h-px bg-[#EAECF0]" />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="full_name" className="field-label">
+                  <label htmlFor="full_name" className="field-label-light">
                     Owner&apos;s full name <span className="text-gold">*</span>
                   </label>
                   <input
@@ -309,7 +309,7 @@ export default function VendorOnboarding() {
                     value={form.full_name}
                     onChange={(e) => set("full_name", e.target.value)}
                     placeholder="e.g. Rajesh Kumar"
-                    className="field-dark"
+                    className="field-light"
                   />
                 </div>
               </section>
@@ -318,21 +318,21 @@ export default function VendorOnboarding() {
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <ScrollText size={13} className="text-gold" />
-                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">GST registration</h2>
-                  <span className="text-[10px] font-semibold text-zinc-500 border border-white/10 bg-white/5 rounded-full px-2 py-0.5">
+                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#475467]">GST registration</h2>
+                  <span className="text-[10px] font-semibold text-[#98A2B3] border border-[#EAECF0] bg-[#F9FAFB] rounded-full px-2 py-0.5">
                     Optional
                   </span>
-                  <div className="flex-grow h-px bg-white/10" />
+                  <div className="flex-grow h-px bg-[#EAECF0]" />
                 </div>
 
                 <div className="rounded-xl border border-gold/25 bg-gold/[0.06] p-4 space-y-3">
-                  <p className="text-[11px] text-zinc-300 leading-relaxed">
+                  <p className="text-[11px] text-[#475467] leading-relaxed">
                     Have a GSTIN? Enter it and we&apos;ll fetch your registered business name and address
                     automatically. No GSTIN? Just skip this and fill the details yourself.
                   </p>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="gstin" className="field-label">GSTIN</label>
+                    <label htmlFor="gstin" className="field-label-light">GSTIN</label>
                     <div className="relative">
                       <input
                         id="gstin"
@@ -343,7 +343,7 @@ export default function VendorOnboarding() {
                         maxLength={15}
                         autoComplete="off"
                         spellCheck={false}
-                        className="field-dark font-mono tracking-[0.14em] pr-11 uppercase"
+                        className="field-light font-mono tracking-[0.14em] pr-11 uppercase"
                       />
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
                         {gstState === "loading" && <Loader2 size={15} className="animate-spin text-gold" />}
@@ -358,7 +358,7 @@ export default function VendorOnboarding() {
                       </p>
                     )}
                     {gstState === "loading" && (
-                      <p className="text-[10px] text-zinc-400">Checking the GST registry…</p>
+                      <p className="text-[10px] text-[#667085]">Checking the GST registry…</p>
                     )}
                     {gstState === "error" && (
                       <p className="text-[10px] text-red-400 flex items-center gap-2">
@@ -406,12 +406,12 @@ export default function VendorOnboarding() {
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Building2 size={13} className="text-gold" />
-                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">Business details</h2>
-                  <div className="flex-grow h-px bg-white/10" />
+                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#475467]">Business details</h2>
+                  <div className="flex-grow h-px bg-[#EAECF0]" />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="business_name" className="field-label">
+                  <label htmlFor="business_name" className="field-label-light">
                     <Building2 size={10} className="text-gold" /> Business name <span className="text-gold">*</span>
                   </label>
                   <input
@@ -421,14 +421,14 @@ export default function VendorOnboarding() {
                     value={form.business_name}
                     onChange={(e) => set("business_name", e.target.value)}
                     placeholder="e.g. Royal Gardens & Banquets"
-                    className="field-dark"
+                    className="field-light"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="email" className="field-label">
+                  <label htmlFor="email" className="field-label-light">
                     <Mail size={10} className="text-gold" /> Business email
-                    <span className="normal-case tracking-normal font-medium text-zinc-500">(optional)</span>
+                    <span className="normal-case tracking-normal font-medium text-[#98A2B3]">(optional)</span>
                   </label>
                   <input
                     id="email"
@@ -436,19 +436,19 @@ export default function VendorOnboarding() {
                     value={form.email}
                     onChange={(e) => set("email", e.target.value)}
                     placeholder="contact@business.com"
-                    className="field-dark"
+                    className="field-light"
                   />
                   {gstState === "verified" && !form.email.trim() && (
-                    <p className="text-[10px] text-zinc-500">
+                    <p className="text-[10px] text-[#98A2B3]">
                       The GST registry doesn&apos;t publish contact emails — add yours so couples can reach you.
                     </p>
                   )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="description" className="field-label">
+                  <label htmlFor="description" className="field-label-light">
                     <FileText size={10} className="text-gold" /> Description
-                    <span className="normal-case tracking-normal font-medium text-zinc-500">(optional)</span>
+                    <span className="normal-case tracking-normal font-medium text-[#98A2B3]">(optional)</span>
                   </label>
                   <textarea
                     id="description"
@@ -456,7 +456,7 @@ export default function VendorOnboarding() {
                     value={form.description}
                     onChange={(e) => set("description", e.target.value)}
                     placeholder="Describe your services, specialities, capacity…"
-                    className="field-dark resize-none"
+                    className="field-light resize-none"
                   />
                 </div>
               </section>
@@ -465,12 +465,12 @@ export default function VendorOnboarding() {
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <MapPin size={13} className="text-gold" />
-                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">Business address</h2>
-                  <div className="flex-grow h-px bg-white/10" />
+                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#475467]">Business address</h2>
+                  <div className="flex-grow h-px bg-[#EAECF0]" />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="address" className="field-label">
+                  <label htmlFor="address" className="field-label-light">
                     Full address <span className="text-gold">*</span>
                   </label>
                   <input
@@ -480,20 +480,20 @@ export default function VendorOnboarding() {
                     value={form.address}
                     onChange={(e) => set("address", e.target.value)}
                     placeholder="Building, street, landmark, area"
-                    className="field-dark"
+                    className="field-light"
                   />
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-3">
                   <div className="space-y-1.5">
-                    <label htmlFor="state" className="field-label">State</label>
+                    <label htmlFor="state" className="field-label-light">State</label>
                     <input
                       id="state"
                       list="onboarding-states"
                       value={form.state}
                       onChange={(e) => set("state", e.target.value)}
                       placeholder="Madhya Pradesh"
-                      className="field-dark"
+                      className="field-light"
                     />
                     <datalist id="onboarding-states">
                       {INDIAN_STATES.map((s) => <option key={s} value={s} />)}
@@ -501,7 +501,7 @@ export default function VendorOnboarding() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="city" className="field-label">
+                    <label htmlFor="city" className="field-label-light">
                       City <span className="text-gold">*</span>
                     </label>
                     <input
@@ -511,7 +511,7 @@ export default function VendorOnboarding() {
                       value={form.city}
                       onChange={(e) => set("city", e.target.value)}
                       placeholder="e.g. Bhopal"
-                      className="field-dark"
+                      className="field-light"
                     />
                     <datalist id="onboarding-cities">
                       {cityOptions.map((c) => <option key={c} value={c} />)}
@@ -519,9 +519,9 @@ export default function VendorOnboarding() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="pincode" className="field-label">
+                    <label htmlFor="pincode" className="field-label-light">
                       Pincode
-                      <span className="normal-case tracking-normal font-medium text-zinc-500">(optional)</span>
+                      <span className="normal-case tracking-normal font-medium text-[#98A2B3]">(optional)</span>
                     </label>
                     <input
                       id="pincode"
@@ -530,7 +530,7 @@ export default function VendorOnboarding() {
                       onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
                       placeholder="462001"
                       maxLength={6}
-                      className="field-dark font-mono tracking-wider"
+                      className="field-light font-mono tracking-wider"
                     />
                   </div>
                 </div>
@@ -538,7 +538,7 @@ export default function VendorOnboarding() {
 
               {/* Submit */}
               <div className="space-y-4 pt-1">
-                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                <p className="text-[11px] text-[#98A2B3] leading-relaxed">
                   Your profile goes under admin review once submitted. You&apos;ll be notified on approval and
                   can access your dashboard in the meantime.
                 </p>
@@ -559,7 +559,7 @@ export default function VendorOnboarding() {
                   )}
                 </button>
 
-                <p className="text-center text-[11px] text-zinc-500">
+                <p className="text-center text-[11px] text-[#98A2B3]">
                   Want to finish this later?{" "}
                   <button
                     type="button"

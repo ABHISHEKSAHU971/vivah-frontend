@@ -248,22 +248,76 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
 
                           {pkg.tiers?.length > 0 && (
                             <div className="p-4 sm:p-5 space-y-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tiers</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Packages</p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {pkg.tiers.map((tier: any) => {
-                                  const meta = TIER_LABELS[tier.tier] || TIER_LABELS.medium;
+                                {/*
+                                  Packages are free-form now: `name` is the identity and `tier`
+                                  is an optional label, so key by id — several packages can
+                                  legitimately share an empty tier.
+                                */}
+                                {pkg.tiers.map((tier: any, ti: number) => {
+                                  const meta = tier.tier ? TIER_LABELS[tier.tier] : null;
                                   return (
-                                    <div key={tier.tier} className={`rounded-xl border p-3 ${meta.bg}`}>
-                                      <div className="flex items-center justify-between">
-                                        <span className={`text-[10px] font-bold uppercase ${meta.color}`}>{meta.label}</span>
-                                        <span className="text-sm font-bold text-gray-900">₹{Number(tier.price).toLocaleString("en-IN")}</span>
+                                    <div
+                                      key={tier.id ?? ti}
+                                      className={`rounded-xl border p-3 ${meta?.bg || "bg-gray-50 border-gray-100"}`}
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <span className="block text-xs font-bold text-gray-900 truncate">
+                                            {tier.name || meta?.label || "Package"}
+                                          </span>
+                                          {meta && (
+                                            <span className={`text-[9px] font-bold uppercase ${meta.color}`}>
+                                              {meta.label}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-sm font-bold text-gray-900 shrink-0">
+                                          ₹{Number(tier.price).toLocaleString("en-IN")}
+                                        </span>
                                       </div>
+
+                                      {(tier.min_guests || tier.max_guests) && (
+                                        <p className="text-[10px] text-gray-500 mt-1">
+                                          {tier.min_guests && tier.max_guests
+                                            ? `${tier.min_guests}–${tier.max_guests} guests`
+                                            : tier.max_guests
+                                              ? `Up to ${tier.max_guests} guests`
+                                              : `From ${tier.min_guests} guests`}
+                                        </p>
+                                      )}
+
                                       {tier.description && (
                                         <p className="text-[11px] text-gray-600 mt-1">{tier.description}</p>
+                                      )}
+
+                                      {tier.inclusions?.length > 0 && (
+                                        <ul className="mt-1.5 space-y-0.5">
+                                          {tier.inclusions.slice(0, 4).map((inc: string, i: number) => (
+                                            <li key={i} className="text-[10px] text-gray-600 flex items-center gap-1">
+                                              <Check size={9} className="text-emerald-500 shrink-0" /> {inc}
+                                            </li>
+                                          ))}
+                                        </ul>
                                       )}
                                     </div>
                                   );
                                 })}
+                              </div>
+                            </div>
+                          )}
+
+                          {pkg.add_ons?.length > 0 && (
+                            <div className="px-4 sm:px-5 pb-1 space-y-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Optional add-ons</p>
+                              <div className="flex flex-wrap gap-2">
+                                {pkg.add_ons.map((a: any, ai: number) => (
+                                  <span key={a.id ?? ai} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold/10 border border-gold/30 text-[11px] font-semibold text-gold">
+                                    {a.name}
+                                    <span className="text-gray-600">₹{Number(a.price).toLocaleString("en-IN")}</span>
+                                  </span>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -292,6 +346,55 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
                       <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">About</h4>
                       <p className="text-sm text-gray-700 leading-relaxed">{activeDecorator.description}</p>
                     </div>
+                    {/* Design details + policies, pulled from each theme */}
+                    {(activeDecorator.packages || []).map((theme: any, ti: number) => {
+                      const chips: [string, string[]][] = [
+                        ["Colour theme", theme.colour_theme || []],
+                        ["Flowers", theme.flowers || []],
+                        ["Materials", theme.materials || []],
+                        ["Drapery", theme.drapery || []],
+                        ["Lighting", theme.lighting || []],
+                      ];
+                      const hasDetail =
+                        chips.some(([, v]) => v.length > 0) ||
+                        theme.backdrop_design || theme.advance_percent || theme.setup_time_hours ||
+                        theme.travel_policy || theme.cancellation_policy;
+                      if (!hasDetail) return null;
+                      return (
+                        <div key={theme.id ?? ti} className="pt-3 border-t border-gray-100 space-y-2.5">
+                          <p className="text-xs font-bold text-gray-900">{theme.name}</p>
+                          {chips.filter(([, v]) => v.length > 0).map(([label, values]) => (
+                            <div key={label} className="flex flex-wrap items-baseline gap-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}:</span>
+                              {values.map((v) => (
+                                <span key={v} className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-700">{v}</span>
+                              ))}
+                            </div>
+                          ))}
+                          {theme.backdrop_design && (
+                            <p className="text-[11px] text-gray-600">
+                              <span className="font-semibold text-gray-700">Backdrop:</span> {theme.backdrop_design}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-500">
+                            {theme.advance_percent != null && <span>Advance: {theme.advance_percent}%</span>}
+                            {theme.setup_time_hours != null && <span>Setup: {theme.setup_time_hours} hrs</span>}
+                            {theme.travel_policy && (
+                              <span>
+                                Travel: {theme.travel_policy === "included" ? "Included"
+                                  : theme.travel_policy === "extra" ? "Charged extra" : "Depends on location"}
+                              </span>
+                            )}
+                          </div>
+                          {theme.cancellation_policy && (
+                            <p className="text-[10px] text-gray-500">
+                              <span className="font-semibold">Cancellation:</span> {theme.cancellation_policy}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-100">
                       {[
                         { icon: <ShieldCheck size={16} className="text-emerald-500" />, label: "Verified", val: "Platform Verified" },

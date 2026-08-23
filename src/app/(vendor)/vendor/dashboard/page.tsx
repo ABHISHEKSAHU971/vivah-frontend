@@ -74,14 +74,14 @@ export default function VendorDashboard() {
       val: String(bookings.length),
       caption: "All time confirmed events",
       icon: Calendar,
-      tile: "tile-indigo",
+      tile: "tile-navy",
     },
     {
       label: "Total Guests Covered",
       val: totalGuests.toLocaleString("en-IN"),
       caption: "Across every confirmed event",
       icon: Users,
-      tile: "tile-emerald",
+      tile: "tile-sage",
     },
     {
       label: "Total Booked Revenue",
@@ -90,7 +90,7 @@ export default function VendorDashboard() {
         ? `\u20b9${pendingBalance.toLocaleString("en-IN")} balance due`
         : "Fully settled",
       icon: DollarSign,
-      tile: "tile-violet",
+      tile: "tile-plum",
       trend: pendingBalance > 0 ? { dir: "down" as const, text: "Balance pending" } : undefined,
     },
   ];

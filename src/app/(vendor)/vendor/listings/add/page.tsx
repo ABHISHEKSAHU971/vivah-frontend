@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Store, Camera, Music, Sparkles, Utensils, Flower, Calendar, ArrowLeft, ArrowRight, Info } from "lucide-react";
+import { ApprovalGate } from "@/components/vendor/ApprovalGate";
 
 interface ServiceOption {
   code: string;
@@ -22,6 +23,7 @@ const serviceOptions: ServiceOption[] = [
 
 export default function AddListingSelectPage() {
   return (
+    <ApprovalGate>
     <div className="space-y-7 font-body max-w-5xl mx-auto">
 
       {/* Header */}
@@ -65,7 +67,7 @@ export default function AddListingSelectPage() {
               <span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/[0.07] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
               <div className="relative space-y-3">
-                <span className="w-11 h-11 rounded-xl bg-gold/10 text-gold border border-gold/20 flex items-center justify-center group-hover:bg-gold group-hover:text-black group-hover:border-gold group-hover:shadow-md transition-all duration-300">
+                <span className="service-tile w-11 h-11 rounded-xl">
                   <Icon size={20} />
                 </span>
                 <div>
@@ -83,5 +85,6 @@ export default function AddListingSelectPage() {
         })}
       </div>
     </div>
+    </ApprovalGate>
   );
 }

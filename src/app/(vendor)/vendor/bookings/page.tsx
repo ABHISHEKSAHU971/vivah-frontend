@@ -53,7 +53,7 @@ export default function VendorBookingRequestsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="console-card console-card-hover p-4">
           <div className="flex items-start justify-between">
-            <span className="console-tile tile-amber"><Bell size={18} /></span>
+            <span className="console-tile tile-gold"><Bell size={18} /></span>
             {counts.pending > 0 && (
               <span className="console-trend console-trend-down">Needs action</span>
             )}
@@ -67,7 +67,7 @@ export default function VendorBookingRequestsPage() {
 
         <div className="console-card console-card-hover p-4">
           <div className="flex items-start justify-between">
-            <span className="console-tile tile-emerald"><CheckCircle2 size={18} /></span>
+            <span className="console-tile tile-sage"><CheckCircle2 size={18} /></span>
           </div>
           <p className="console-stat-label mt-3.5">Confirmed</p>
           <p className="console-stat-value mt-1">{counts.accepted}</p>
@@ -78,7 +78,7 @@ export default function VendorBookingRequestsPage() {
 
         <div className="console-card console-card-hover p-4">
           <div className="flex items-start justify-between">
-            <span className="console-tile tile-indigo"><Inbox size={18} /></span>
+            <span className="console-tile tile-navy"><Inbox size={18} /></span>
           </div>
           <p className="console-stat-label mt-3.5">Total Requests</p>
           <p className="console-stat-value mt-1">{counts.all}</p>

@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { 
   ArrowLeft, ArrowRight, Save, CheckCircle, Store, Music, 
-  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
+  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check, Plus 
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { INDIAN_STATES, citiesForState } from "@/lib/indiaLocations";
 
 import { Suspense } from "react";
+import { ApprovalGate } from "@/components/vendor/ApprovalGate";
+import { DecorationBuilder, emptyTheme } from "@/components/vendor/DecorationBuilder";
 
 // Predefined choices matching Django models
 const CUISINE_CHOICES = [
@@ -47,16 +49,6 @@ const SERVICE_POLICIES = [
   { value: "both", label: "In-House + Outside Allowed" },
 ];
 
-const DECORATOR_STYLES = [
-  { value: "royal", label: "Royal" },
-  { value: "floral", label: "Floral" },
-  { value: "minimal", label: "Minimal Luxury" },
-  { value: "bollywood", label: "Bollywood" },
-  { value: "traditional", label: "Traditional" },
-  { value: "modern", label: "Modern Premium" },
-  { value: "cultural", label: "Cultural" },
-  { value: "outdoor", label: "Outdoor Garden" },
-];
 
 const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-wedding"];
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
@@ -66,7 +58,12 @@ const CATERING_CUISINES = [
   "Rajasthani", "Gujarati", "South Indian", "North Indian", "Punjabi",
   "Multi-Cuisine", "Continental", "Chinese", "Italian", "Mughlai",
   "Bengali", "Maharashtrian", "Jain", "Live Counters",
+  "Malwi", "Bundeli", "Awadhi", "Hyderabadi", "Kashmiri", "Goan",
+  "Marwari", "Sindhi", "Thai", "Mexican", "Street Food", "Pure Veg Satvik",
 ];
+
+/** Lower-cased built-ins, so anything else a vendor types counts as custom. */
+const CATERING_CUISINE_KEYS = CATERING_CUISINES.map((c) => c.toLowerCase());
 
 const VENUE_MEDIA_FOLDERS = [
   { value: "rooms", label: "Rooms" },
@@ -216,6 +213,16 @@ function AddListingForm() {
 
   // Image Upload State
   const [images, setImages] = useState<{ file?: File; preview: string; folder: string; isDefault: boolean }[]>([]);
+  const [customCuisine, setCustomCuisine] = useState("");
+
+  /** Add a cuisine the built-in list doesn't cover; de-duplicates case-insensitively. */
+  const addCustomCuisine = () => {
+    const value = customCuisine.trim().toLowerCase();
+    if (!value) return;
+    const current: string[] = detailForm.cuisines || [];
+    if (!current.includes(value)) handleDetailChange("cuisines", [...current, value]);
+    setCustomCuisine("");
+  };
   const [activeMediaFolder, setActiveMediaFolder] = useState("rooms");
   const [uploadingImages, setUploadingImages] = useState(false);
 
@@ -336,18 +343,8 @@ function AddListingForm() {
         break;
       case "decorator":
         setActiveMediaFolder("mandap");
-        setDetailForm({
-          name: "",
-          style: "floral",
-          description: "",
-          includes: ["Flower Mandap", "Welcome Gate Floral Arch"],
-          tiers: [
-            { tier: "low", price: "", description: "" },
-            { tier: "medium", price: "", description: "" },
-            { tier: "average", price: "", description: "" },
-            { tier: "high", price: "", description: "" },
-          ]
-        });
+        // A decorator lists one or more themes, each with its own packages.
+        setDetailForm({ themes: [emptyTheme()] });
         break;
       default:
         setDetailForm({});
@@ -524,12 +521,55 @@ function AddListingForm() {
           });
         }
       } else if (type === "decorator") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
+        const themes = detailForm.themes || [];
+        if (themes.length === 0) {
+          errors["details.themes"] = "Add at least one decoration theme";
+        }
+        themes.forEach((theme: any, ti: number) => {
+          if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
+          if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
+          if (!theme.includes || theme.includes.length === 0) {
+            errors[`themes.${ti}.includes`] = "Add at least one common inclusion";
+          }
+          const pkgs = theme.tiers || [];
+          if (pkgs.length === 0) {
+            errors[`themes.${ti}.tiers`] = "Add at least one package";
+          }
+          pkgs.forEach((pkg: any, pi: number) => {
+            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${pi}.name`] = "Package name is required";
+            if (!pkg.price || Number(pkg.price) <= 0) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Price must be greater than 0";
+            }
+            if (pkg.min_guests && pkg.max_guests && Number(pkg.min_guests) >= Number(pkg.max_guests)) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Guests up to must be greater than guests from";
+            }
+          });
+        });
       }
     }
     
     setFormErrors(errors);
+    if (Object.keys(errors).length > 0) scrollToFirstError();
     return Object.keys(errors).length === 0;
+  };
+
+  /**
+   * Bring the first failing field into view. Sections holding an error expand
+   * themselves, so this runs on the next frame once they've rendered.
+   */
+  const scrollToFirstError = () => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const target =
+          document.querySelector('[data-error="true"]') ||
+          document.querySelector(".border-red-400, .border-red-300");
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          const focusable = target.querySelector("input, textarea, select") as HTMLElement | null;
+          (focusable ?? (target as HTMLElement)).focus?.();
+        }
+      }, 60);
+    });
   };
 
   const handleNext = () => {
@@ -602,6 +642,27 @@ function AddListingForm() {
       delete payload.details.citySearch;
     }
 
+    // Decorator: coerce the numeric fields on every theme, package and add-on,
+    // and drop packages/add-ons the vendor left blank.
+    if (type === "decorator" && Array.isArray(payload.details.themes)) {
+      payload.details.themes = payload.details.themes.map((theme: any) => ({
+        ...theme,
+        advance_percent: theme.advance_percent ? parseInt(theme.advance_percent) : null,
+        setup_time_hours: theme.setup_time_hours ? parseInt(theme.setup_time_hours) : null,
+        tiers: (theme.tiers || [])
+          .filter((pkg: any) => pkg.price !== "" && pkg.price != null)
+          .map((pkg: any) => ({
+            ...pkg,
+            price: parseFloat(pkg.price),
+            min_guests: pkg.min_guests ? parseInt(pkg.min_guests) : null,
+            max_guests: pkg.max_guests ? parseInt(pkg.max_guests) : null,
+          })),
+        add_ons: (theme.add_ons || [])
+          .filter((a: any) => a.name?.trim() && a.price !== "" && a.price != null)
+          .map((a: any) => ({ ...a, price: parseFloat(a.price) })),
+      }));
+    }
+
     // Convert package fields to decimals/numbers for caterer
     if (isCaterer && payload.details.packages) {
       payload.details.packages = payload.details.packages.map((pkg: any) => ({
@@ -658,20 +719,39 @@ function AddListingForm() {
     } catch (err: any) {
       console.error("Listing create error:", err);
       if (err.response?.data?.errors) {
-        // Flatten nested errors from serializer
-        const errors = err.response.data.errors;
+        /*
+         * Server errors arrive nested, e.g.
+         *   { details: { themes: { "0": { style: ["This field is required."] } } } }
+         * Flatten to the same dotted keys the forms use ("themes.0.style"), so a
+         * server-side failure highlights the exact field a client-side one would.
+         */
         const flat: Record<string, string> = {};
-        Object.keys(errors).forEach((k) => {
-          if (k === "details" && typeof errors[k] === "object") {
-            Object.keys(errors[k]).forEach((dk) => {
-              flat[`details.${dk}`] = Array.isArray(errors[k][dk]) ? errors[k][dk].join(" ") : errors[k][dk];
-            });
-          } else {
-            flat[k] = Array.isArray(errors[k]) ? errors[k].join(" ") : errors[k];
+        const walk = (node: any, path: string[]) => {
+          if (node == null) return;
+          if (typeof node === "string") { flat[path.join(".")] = node; return; }
+          if (Array.isArray(node)) {
+            if (node.every((v) => typeof v === "string")) { flat[path.join(".")] = node.join(" "); return; }
+            node.forEach((v, i) => walk(v, [...path, String(i)]));
+            return;
           }
+          if (typeof node === "object") {
+            Object.entries(node).forEach(([k, v]) => walk(v, [...path, k]));
+          }
+        };
+        walk(err.response.data.errors, []);
+
+        // "details.themes.0.style" also maps to "themes.0.style" for the builder.
+        Object.keys(flat).forEach((k) => {
+          if (k.startsWith("details.themes.")) flat[k.replace("details.", "")] = flat[k];
         });
+
         setFormErrors(flat);
         setErrorMsg("Please fix the validation errors below.");
+
+        // Details live on step 2 — go back there so the flagged field is reachable.
+        const detailsFailed = Object.keys(flat).some((k) => k.startsWith("details.") || k.startsWith("themes."));
+        if (detailsFailed && step !== 2) setStep(2);
+        scrollToFirstError();
       } else {
         setErrorMsg(err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error || "An unexpected error occurred. Please try again.");
       }
@@ -936,8 +1016,13 @@ function AddListingForm() {
           <hr className="border-gray-100" />
 
           {/* Cuisines Checkboxes */}
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+          <div className="space-y-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+              <span className="text-[10px] text-gray-400">
+                {(detailForm.cuisines || []).length} selected
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {CATERING_CUISINES.map((cuisine) => {
                 const cuisines = detailForm.cuisines || [];
@@ -964,6 +1049,60 @@ function AddListingForm() {
                 );
               })}
             </div>
+            {/* Anything not in the built-in list — added below, removable here. */}
+            {(detailForm.cuisines || []).filter((c: string) => !CATERING_CUISINE_KEYS.includes(c)).length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(detailForm.cuisines || [])
+                  .filter((c: string) => !CATERING_CUISINE_KEYS.includes(c))
+                  .map((c: string) => (
+                    <span
+                      key={c}
+                      className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-gold/10 border border-gold/40 text-gold text-xs font-semibold capitalize"
+                    >
+                      {c}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${c}`}
+                        onClick={() =>
+                          handleDetailChange(
+                            "cuisines",
+                            (detailForm.cuisines || []).filter((x: string) => x !== c)
+                          )
+                        }
+                        className="w-4 h-4 rounded-full hover:bg-gold/25 flex items-center justify-center"
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            {/* Add a cuisine that isn't listed. */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="text"
+                value={customCuisine}
+                onChange={(e) => setCustomCuisine(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomCuisine();
+                  }
+                }}
+                placeholder="Cuisine not listed? Type it here, e.g. Chettinad"
+                className="flex-grow border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+              />
+              <button
+                type="button"
+                onClick={addCustomCuisine}
+                disabled={!customCuisine.trim()}
+                className="shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-700 bg-white hover:border-gold hover:text-gold disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-1.5"
+              >
+                <Plus size={13} /> Add cuisine
+              </button>
+            </div>
+
             {formErrors["details.cuisines"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.cuisines"]}</p>}
           </div>
 
@@ -2113,176 +2252,40 @@ function AddListingForm() {
 
           {/* DECORATION DETAIL FORM */}
           {type === "decorator" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Theme Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Royal Marigold Stage Setup, Glasshouse Minimalistic Decor"
-                  value={detailForm.name}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decor Style Style Theme</label>
-                <select
-                  value={detailForm.style}
-                  onChange={(e) => handleDetailChange("style", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                >
-                  {DECORATOR_STYLES.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Theme Description</label>
-                <textarea
-                  value={detailForm.description}
-                  rows={4}
-                  placeholder="Provide background, color themes, drapery, lighting specs, or materials used."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Inclusions (What is included in this package?)</label>
-                <div className="flex flex-wrap gap-2 items-center p-2.5 border border-gray-200 rounded-xl bg-zinc-50/30">
-                  {detailForm.includes?.map((inc: string, idx: number) => (
-                    <span key={inc} className="bg-gold/10 text-gold border border-gold/15 text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1">
-                      {inc}
-                      <button 
-                        type="button" 
-                        onClick={() => handleDetailChange("includes", detailForm.includes.filter((_: any, i: number) => i !== idx))}
-                        className="text-gray-400 hover:text-black hover:bg-gold/10 rounded-full"
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    placeholder="Add item & press Enter"
-                    className="border-none bg-transparent focus:outline-none text-xs flex-grow p-1 text-gray-900 placeholder-slate-400 min-w-[150px]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const val = e.currentTarget.value.trim();
-                        if (val && !detailForm.includes?.includes(val)) {
-                          handleDetailChange("includes", [...(detailForm.includes || []), val]);
-                          e.currentTarget.value = "";
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <p className="text-[9px] text-gray-400 mt-1">Type an item (e.g. LED stage wall, Marigold drapery, Truss setup) and press Enter to save</p>
-              </div>
-
-              {/* Decoration Tiers Table */}
-              <div className="space-y-4 pt-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Tiers (Pricing & Descriptions)</label>
-                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
-                        <th className="px-4 py-3 w-1/4">Tier</th>
-                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
-                        <th className="px-4 py-3 w-1/2">Inclusions & Area Specs</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-sm">
-                      {[
-                        { key: "low", label: "Silver (Budget)" },
-                        { key: "medium", label: "Gold (Standard)" },
-                        { key: "average", label: "Platinum (Premium)" },
-                        { key: "high", label: "Luxury (High)" }
-                      ].map(({ key, label }) => {
-                        const currentTiers = detailForm.tiers || [];
-                        let tierData = currentTiers.find((t: any) => t.tier === key);
-                        if (!tierData) {
-                          tierData = { tier: key, price: "", description: "" };
-                        }
-                        return (
-                          <tr key={key} className="hover:bg-gray-50/30">
-                            <td className="px-4 py-3 font-semibold text-gray-700">{label}</td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                placeholder={`e.g. ${key === "low" ? "15000" : key === "medium" ? "30000" : key === "average" ? "60000" : "120000"}`}
-                                value={tierData.price || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].price = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: e.target.value, description: "" });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                placeholder={`e.g. ${key === "low" ? "Standard entrance and stage backdrop (up to 400 sqft)" : key === "medium" ? "Entrance arch, stage backdrop, 10 table centerpieces (up to 800 sqft)" : "Luxury floral entry, premium stage draping, 20 centerpieces, pathway lighting"}`}
-                                value={tierData.description || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].description = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: "", description: e.target.value });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <DecorationBuilder
+              themes={detailForm.themes && detailForm.themes.length ? detailForm.themes : [emptyTheme()]}
+              onChange={(next) => handleDetailChange("themes", next)}
+              errors={formErrors}
+            />
           )}
 
-          {/* Footer Controls */}
-          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-gray-100">
             <button
-              onClick={handleBack}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+              type="button"
+              onClick={() => setStep(1)}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-900 transition-all flex items-center justify-center gap-1.5"
             >
               <ArrowLeft size={13} /> Back
             </button>
             <button
+              type="button"
               onClick={handleNext}
-              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+              className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
             >
-              Configure Media <ArrowRight size={14} />
+              Continue to Media <ArrowRight size={13} />
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 3: MEDIA UPLOAD & SUBMIT FOR NON-CATERERS */}
+      {/* STEP 3: MEDIA UPLOAD (non-caterer) */}
       {step === 3 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 font-heading">Media Showcase Upload</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Attach high-resolution photos showcasing your venue setup, wedding portfolio, makeup work, or sound stages.</p>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Photos & Media</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Add photos of your work. The one you mark as default is shown on your listing card.
+            </p>
           </div>
 
           <hr className="border-gray-100" />
@@ -2325,7 +2328,7 @@ function AddListingForm() {
                 onChange={handleImageChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
-              <div className="w-12 h-12 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15 group-hover:bg-gold group-hover:text-black transition-all">
+              <div className="service-tile w-12 h-12 rounded-full">
                 <Upload size={20} />
               </div>
               <div className="text-center">
@@ -3095,14 +3098,17 @@ function AddListingForm() {
 
 export default function AddListingFormPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-gray-400">
-        <Loader2 size={32} className="animate-spin text-gold" />
-        <p className="text-sm">Loading dynamic listing form...</p>
-      </div>
-    }>
-      <AddListingForm />
-    </Suspense>
+    /* Guard the form itself too — the picker can be skipped via a direct URL. */
+    <ApprovalGate>
+      <Suspense fallback={
+        <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-gray-400">
+          <Loader2 size={32} className="animate-spin text-gold" />
+          <p className="text-sm">Loading dynamic listing form...</p>
+        </div>
+      }>
+        <AddListingForm />
+      </Suspense>
+    </ApprovalGate>
   );
 }
 
