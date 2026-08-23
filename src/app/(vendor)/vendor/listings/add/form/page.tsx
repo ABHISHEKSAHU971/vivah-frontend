@@ -1558,9 +1558,13 @@ function AddListingForm() {
                 </div>
               </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/*
+                  Labels reserve two lines so a wrapping caption never drops its
+                  input out of line with the rest of the row.
+                */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of AC Rooms</label>
+                  <label className="form-row-label">Number of AC Rooms</label>
                   <input
                     type="number"
                     min={0}
@@ -1571,7 +1575,7 @@ function AddListingForm() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of Non-AC Rooms</label>
+                  <label className="form-row-label">Number of Non-AC Rooms</label>
                   <input
                     type="number"
                     min={0}
@@ -1582,7 +1586,7 @@ function AddListingForm() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of Halls</label>
+                  <label className="form-row-label">Number of Halls</label>
                   <input
                     type="number"
                     min={0}
@@ -1592,7 +1596,7 @@ function AddListingForm() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Dormitory Capacity (people, optional)</label>
+                  <label className="form-row-label">Total Capacity of Dormitory (people)</label>
                   <input
                     type="number"
                     min={1}

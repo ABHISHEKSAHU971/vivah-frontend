@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Store, User, LogOut, Bell, Loader2, Menu, X, ChevronDown,
+  LayoutDashboard, Store, User, LogOut, Bell, Loader2, Menu, X, ChevronDown, Inbox,
 } from "lucide-react";
 import { useStore } from "@/store/store";
 import { authApi, vendorApi, type VendorStatusData } from "@/lib/authApi";
@@ -12,7 +12,8 @@ import { authApi, vendorApi, type VendorStatusData } from "@/lib/authApi";
 const NAV_ITEMS = [
   { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/vendor/listings", icon: Store, label: "My Services" },
-  { href: "/vendor/profile", icon: User, label: "Vendor Profile", badge: 2 },
+  { href: "/vendor/bookings", icon: Inbox, label: "Booking Requests", badge: 2 },
+  { href: "/vendor/profile", icon: User, label: "Vendor Profile" },
 ];
 
 /** Page title + subtitle shown in the top bar, keyed by route prefix. */
@@ -21,7 +22,7 @@ const PAGE_META: { match: (p: string) => boolean; title: string; subtitle: strin
   { match: (p) => p.startsWith("/vendor/listings/add"), title: "Add a Service", subtitle: "Create a new listing for your business." },
   { match: (p) => p.startsWith("/vendor/listings"), title: "My Services", subtitle: "Everything you offer, in one place." },
   { match: (p) => p.startsWith("/vendor/profile"), title: "Vendor Profile", subtitle: "Your business details and documents." },
-  { match: (p) => p.startsWith("/vendor/bookings"), title: "Bookings", subtitle: "Confirmed events and schedules." },
+  { match: (p) => p.startsWith("/vendor/bookings"), title: "Booking Requests", subtitle: "Review and respond to customer enquiries." },
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
