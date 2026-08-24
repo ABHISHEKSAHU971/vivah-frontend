@@ -5,11 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { 
   ArrowLeft, ArrowRight, Save, CheckCircle, Store, Music, 
-  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
+  Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check, Plus 
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { INDIAN_STATES, citiesForState } from "@/lib/indiaLocations";
 
 import { Suspense } from "react";
+import { ApprovalGate } from "@/components/vendor/ApprovalGate";
+import { DecorationBuilder, emptyTheme } from "@/components/vendor/DecorationBuilder";
 
 // Predefined choices matching Django models
 const CUISINE_CHOICES = [
@@ -46,20 +49,40 @@ const SERVICE_POLICIES = [
   { value: "both", label: "In-House + Outside Allowed" },
 ];
 
-const DECORATOR_STYLES = [
-  { value: "royal", label: "Royal" },
-  { value: "floral", label: "Floral" },
-  { value: "minimal", label: "Minimal Luxury" },
-  { value: "bollywood", label: "Bollywood" },
-  { value: "traditional", label: "Traditional" },
-  { value: "modern", label: "Modern Premium" },
-  { value: "cultural", label: "Cultural" },
-  { value: "outdoor", label: "Outdoor Garden" },
-];
 
 const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-wedding"];
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
 const PLANNER_SERVICES = ["full_planning", "partial_coordination", "day_of_coordination", "decor_design"];
+
+const CATERING_CUISINES = [
+  "Rajasthani", "Gujarati", "South Indian", "North Indian", "Punjabi",
+  "Multi-Cuisine", "Continental", "Chinese", "Italian", "Mughlai",
+  "Bengali", "Maharashtrian", "Jain", "Live Counters",
+  "Malwi", "Bundeli", "Awadhi", "Hyderabadi", "Kashmiri", "Goan",
+  "Marwari", "Sindhi", "Thai", "Mexican", "Street Food", "Pure Veg Satvik",
+];
+
+/** Lower-cased built-ins, so anything else a vendor types counts as custom. */
+const CATERING_CUISINE_KEYS = CATERING_CUISINES.map((c) => c.toLowerCase());
+
+const VENUE_MEDIA_FOLDERS = [
+  { value: "rooms", label: "Rooms" },
+  { value: "garden", label: "Garden" },
+  { value: "hall", label: "Banquet Hall" },
+  { value: "pool", label: "Pool" },
+  { value: "dormitory", label: "Dormitory" },
+  { value: "other", label: "Other" },
+];
+
+const DECORATION_MEDIA_FOLDERS = [
+  { value: "mandap", label: "Mandap" },
+  { value: "stage", label: "Stage" },
+  { value: "entrance", label: "Entrance" },
+  { value: "lighting", label: "Lighting" },
+  { value: "floral", label: "Floral" },
+  { value: "cover", label: "Cover" },
+  { value: "other", label: "Other" },
+];
 
 interface MenuSelection {
   category: string;
@@ -181,6 +204,7 @@ function AddListingForm() {
     city: "Bhopal",
     state: "Madhya Pradesh",
     address: "",
+    owner_phone: "",
   });
 
   // Category specific fields
@@ -188,7 +212,18 @@ function AddListingForm() {
   const [catererTab, setCatererTab] = useState("packages"); // "profile", "menu", "packages"
 
   // Image Upload State
-  const [images, setImages] = useState<{ file?: File; preview: string }[]>([]);
+  const [images, setImages] = useState<{ file?: File; preview: string; folder: string; isDefault: boolean }[]>([]);
+  const [customCuisine, setCustomCuisine] = useState("");
+
+  /** Add a cuisine the built-in list doesn't cover; de-duplicates case-insensitively. */
+  const addCustomCuisine = () => {
+    const value = customCuisine.trim().toLowerCase();
+    if (!value) return;
+    const current: string[] = detailForm.cuisines || [];
+    if (!current.includes(value)) handleDetailChange("cuisines", [...current, value]);
+    setCustomCuisine("");
+  };
+  const [activeMediaFolder, setActiveMediaFolder] = useState("rooms");
   const [uploadingImages, setUploadingImages] = useState(false);
 
   const [masterFoodItems, setMasterFoodItems] = useState<any[]>([]);
@@ -239,9 +274,10 @@ function AddListingForm() {
         });
         break;
       case "venue":
+        setActiveMediaFolder("rooms");
         setDetailForm({
           venue_type: "wedding_garden",
-          min_capacity: 50,
+          min_capacity: "",
           max_capacity: 500,
           price_per_day: "",
           decoration_policy: "both",
@@ -250,12 +286,14 @@ function AddListingForm() {
           planner_policy: "both",
           has_parking: true,
           has_accommodation: false,
+          has_pool: false,
           is_ac: false,
           is_outdoor: true,
           pincode: "",
           num_ac_rooms: 0,
           num_non_ac_rooms: 0,
           num_halls: 0,
+          dormitory_capacity: "",
         });
         break;
       case "dj":
@@ -281,6 +319,11 @@ function AddListingForm() {
           tier: "high",
           price_per_plate: 1200,
           min_plates: 100,
+          min_guests: 50,
+          max_guests: "",
+          owner_phone: "",
+          cuisines: [],
+          service_cities: [],
           description: "Premium wedding catering services.",
           branches: [],
           menu_items: [],
@@ -299,18 +342,9 @@ function AddListingForm() {
         });
         break;
       case "decorator":
-        setDetailForm({
-          name: "",
-          style: "floral",
-          description: "",
-          includes: ["Flower Mandap", "Welcome Gate Floral Arch"],
-          tiers: [
-            { tier: "low", price: "", description: "" },
-            { tier: "medium", price: "", description: "" },
-            { tier: "average", price: "", description: "" },
-            { tier: "high", price: "", description: "" },
-          ]
-        });
+        setActiveMediaFolder("mandap");
+        // A decorator lists one or more themes, each with its own packages.
+        setDetailForm({ themes: [emptyTheme()] });
         break;
       default:
         setDetailForm({});
@@ -353,14 +387,23 @@ function AddListingForm() {
     const files = e.target.files;
     if (!files) return;
     const nextImages = [...images];
+    const folder =
+      type === "venue" || type === "decorator"
+        ? activeMediaFolder
+        : type === "caterer"
+          ? "buffet"
+          : "general";
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       nextImages.push({
         file,
         preview: URL.createObjectURL(file),
+        folder,
+        isDefault: nextImages.length === 0,
       });
     }
     setImages(nextImages);
+    e.target.value = "";
   };
 
   const removeImage = (index: number) => {
@@ -375,10 +418,25 @@ function AddListingForm() {
       if (!baseForm.address.trim()) errors.address = "Complete Address is required";
       if (!baseForm.city.trim()) errors.city = "City is required";
       if (!baseForm.state.trim()) errors.state = "State is required";
+      if (type === "caterer" && !baseForm.owner_phone.trim()) {
+        errors.owner_phone = "Owner phone number is required";
+      }
     } else if (type === "caterer") {
       if (currentStep === 2) {
         if (!detailForm.cuisines || detailForm.cuisines.length === 0) {
           errors["details.cuisines"] = "Select at least one cuisine type";
+        }
+        if (!detailForm.min_guests || Number(detailForm.min_guests) <= 0) {
+          errors["details.min_guests"] = "Minimum guest capacity must be greater than 0";
+        }
+        if (detailForm.max_guests !== "" && detailForm.max_guests != null && Number(detailForm.max_guests) <= 0) {
+          errors["details.max_guests"] = "Maximum persons must be greater than 0 when provided";
+        }
+        if (detailForm.max_guests && Number(detailForm.max_guests) < Number(detailForm.min_guests || 0)) {
+          errors["details.max_guests"] = "Maximum persons must be greater than minimum guests";
+        }
+        if (!detailForm.service_cities || detailForm.service_cities.length === 0) {
+          errors["details.service_cities"] = "Select at least one city where you provide service";
         }
       } else if (currentStep === 4) {
         if (!detailForm.packages || detailForm.packages.length === 0) {
@@ -403,27 +461,56 @@ function AddListingForm() {
           errors["details.photography_types"] = "Select at least one photography type";
         } else {
           detailForm.services.forEach((s: any, idx: number) => {
-            if (!s.price_per_day) {
-              errors[`details.services.${idx}.price_per_day`] = "Price per day is required";
+            if (!s.price_per_day || Number(s.price_per_day) <= 0) {
+              errors[`details.services.${idx}.price_per_day`] = "Price per day must be greater than 0";
             }
           });
         }
       } else if (type === "makeup") {
-        if (!detailForm.bridal_package_price) errors["details.bridal_package_price"] = "Bridal price is required";
-        if (!detailForm.party_makeup_price) errors["details.party_makeup_price"] = "Party makeup price is required";
+        if (!detailForm.bridal_package_price || Number(detailForm.bridal_package_price) <= 0) {
+          errors["details.bridal_package_price"] = "Bridal price must be greater than 0";
+        }
+        if (!detailForm.party_makeup_price || Number(detailForm.party_makeup_price) <= 0) {
+          errors["details.party_makeup_price"] = "Party makeup price must be greater than 0";
+        }
       } else if (type === "planner") {
-        if (!detailForm.budget_min) errors["details.budget_min"] = "Min budget is required";
-        if (!detailForm.budget_max) errors["details.budget_max"] = "Max budget is required";
+        if (!detailForm.budget_min || Number(detailForm.budget_min) <= 0) {
+          errors["details.budget_min"] = "Min budget must be greater than 0";
+        }
+        if (!detailForm.budget_max || Number(detailForm.budget_max) <= 0) {
+          errors["details.budget_max"] = "Max budget must be greater than 0";
+        }
+        if (
+          detailForm.budget_min && detailForm.budget_max &&
+          Number(detailForm.budget_min) >= Number(detailForm.budget_max)
+        ) {
+          errors["details.budget_max"] = "Max budget must be greater than min budget";
+        }
       } else if (type === "venue") {
-        if (!detailForm.price_per_day) errors["details.price_per_day"] = "Daily rent is required";
-        if (!detailForm.max_capacity) errors["details.max_capacity"] = "Max capacity is required";
+        if (!detailForm.price_per_day || Number(detailForm.price_per_day) <= 0) {
+          errors["details.price_per_day"] = "Daily rent must be greater than 0";
+        }
+        if (!detailForm.max_capacity || Number(detailForm.max_capacity) <= 0) {
+          errors["details.max_capacity"] = "Max capacity must be greater than 0";
+        }
+        if (detailForm.min_capacity !== "" && detailForm.min_capacity != null && Number(detailForm.min_capacity) <= 0) {
+          errors["details.min_capacity"] = "Minimum guest capacity must be greater than 0 when provided";
+        }
+        if (detailForm.min_capacity && detailForm.max_capacity && Number(detailForm.min_capacity) >= Number(detailForm.max_capacity)) {
+          errors["details.max_capacity"] = "Maximum capacity must be greater than minimum capacity";
+        }
+        if (detailForm.dormitory_capacity !== "" && detailForm.dormitory_capacity != null && Number(detailForm.dormitory_capacity) <= 0) {
+          errors["details.dormitory_capacity"] = "Dormitory capacity must be greater than 0 when provided";
+        }
       } else if (type === "dj") {
         if (!detailForm.packages || detailForm.packages.length === 0) {
           errors["details.packages"] = "Create at least one DJ package plan tier";
         } else {
           detailForm.packages.forEach((pkg: any, idx: number) => {
             if (!pkg.name?.trim()) errors[`details.packages.${idx}.name`] = "Plan name is required";
-            if (!pkg.price) errors[`details.packages.${idx}.price`] = "Price is required";
+            if (!pkg.price || Number(pkg.price) <= 0) {
+              errors[`details.packages.${idx}.price`] = "Price must be greater than 0";
+            }
             if (pkg.equipment && pkg.equipment.length > 0) {
               pkg.equipment.forEach((eq: any, eqIdx: number) => {
                 if (eq.quantity > eq.quantity_available) {
@@ -434,12 +521,52 @@ function AddListingForm() {
           });
         }
       } else if (type === "decorator") {
-        if (!detailForm.name?.trim()) errors["details.name"] = "Package Name is required";
+        const themes = detailForm.themes || [];
+        if (themes.length === 0) {
+          errors["details.themes"] = "Add at least one decoration theme";
+        }
+        themes.forEach((theme: any, ti: number) => {
+          if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
+          if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
+          const pkgs = theme.tiers || [];
+          if (pkgs.length === 0) {
+            errors[`themes.${ti}.tiers`] = "Add at least one package";
+          }
+          pkgs.forEach((pkg: any, pi: number) => {
+            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${pi}.name`] = "Package name is required";
+            if (!pkg.price || Number(pkg.price) <= 0) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Price must be greater than 0";
+            }
+            if (pkg.min_guests && pkg.max_guests && Number(pkg.min_guests) >= Number(pkg.max_guests)) {
+              errors[`themes.${ti}.tiers.${pi}.price`] = "Guests up to must be greater than guests from";
+            }
+          });
+        });
       }
     }
     
     setFormErrors(errors);
+    if (Object.keys(errors).length > 0) scrollToFirstError();
     return Object.keys(errors).length === 0;
+  };
+
+  /**
+   * Bring the first failing field into view. Sections holding an error expand
+   * themselves, so this runs on the next frame once they've rendered.
+   */
+  const scrollToFirstError = () => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const target =
+          document.querySelector('[data-error="true"]') ||
+          document.querySelector(".border-red-400, .border-red-300");
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          const focusable = target.querySelector("input, textarea, select") as HTMLElement | null;
+          (focusable ?? (target as HTMLElement)).focus?.();
+        }
+      }, 60);
+    });
   };
 
   const handleNext = () => {
@@ -496,11 +623,42 @@ function AddListingForm() {
     if (payload.details.team_size) payload.details.team_size = parseInt(payload.details.team_size);
     if (payload.details.delivery_days_limit) payload.details.delivery_days_limit = parseInt(payload.details.delivery_days_limit);
     if (payload.details.min_capacity) payload.details.min_capacity = parseInt(payload.details.min_capacity);
+    else payload.details.min_capacity = null;
     if (payload.details.max_capacity) payload.details.max_capacity = parseInt(payload.details.max_capacity);
     if (payload.details.hours) payload.details.hours = parseInt(payload.details.hours);
     if (payload.details.num_ac_rooms !== undefined) payload.details.num_ac_rooms = parseInt(payload.details.num_ac_rooms) || 0;
     if (payload.details.num_non_ac_rooms !== undefined) payload.details.num_non_ac_rooms = parseInt(payload.details.num_non_ac_rooms) || 0;
     if (payload.details.num_halls !== undefined) payload.details.num_halls = parseInt(payload.details.num_halls) || 0;
+    if (payload.details.dormitory_capacity) payload.details.dormitory_capacity = parseInt(payload.details.dormitory_capacity);
+    else if (type === "venue") payload.details.dormitory_capacity = null;
+    if (payload.details.min_guests) payload.details.min_guests = parseInt(payload.details.min_guests);
+    if (payload.details.max_guests) payload.details.max_guests = parseInt(payload.details.max_guests);
+    else if (isCaterer) payload.details.max_guests = null;
+    if (isCaterer) {
+      payload.details.owner_phone = baseForm.owner_phone.trim();
+      delete payload.details.citySearch;
+    }
+
+    // Decorator: coerce the numeric fields on every theme, package and add-on,
+    // and drop packages/add-ons the vendor left blank.
+    if (type === "decorator" && Array.isArray(payload.details.themes)) {
+      payload.details.themes = payload.details.themes.map((theme: any) => ({
+        ...theme,
+        advance_percent: theme.advance_percent ? parseInt(theme.advance_percent) : null,
+        setup_time_hours: theme.setup_time_hours ? parseInt(theme.setup_time_hours) : null,
+        tiers: (theme.tiers || [])
+          .filter((pkg: any) => pkg.price !== "" && pkg.price != null)
+          .map((pkg: any) => ({
+            ...pkg,
+            price: parseFloat(pkg.price),
+            min_guests: pkg.min_guests ? parseInt(pkg.min_guests) : null,
+            max_guests: pkg.max_guests ? parseInt(pkg.max_guests) : null,
+          })),
+        add_ons: (theme.add_ons || [])
+          .filter((a: any) => a.name?.trim() && a.price !== "" && a.price != null)
+          .map((a: any) => ({ ...a, price: parseFloat(a.price) })),
+      }));
+    }
 
     // Convert package fields to decimals/numbers for caterer
     if (isCaterer && payload.details.packages) {
@@ -532,15 +690,22 @@ function AddListingForm() {
       if (response.status === 201 || response.data.success) {
         // Upload listing image if provided
         const listingId = response.data?.data?.id;
-        if (listingId && images.length > 0 && images[0].file) {
-          try {
-            const formData = new FormData();
-            formData.append("image", images[0].file);
-            await api.post(`/listings/${listingId}/image/`, formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-          } catch (imgErr) {
-            console.warn("Image upload failed, listing was still created:", imgErr);
+        if (listingId && images.length > 0) {
+          const hasDefault = images.some((img) => img.isDefault);
+          for (let i = 0; i < images.length; i++) {
+            const img = images[i];
+            if (!img.file) continue;
+            try {
+              const formData = new FormData();
+              formData.append("image", img.file);
+              formData.append("folder", img.folder || "general");
+              formData.append("is_default", img.isDefault || (!hasDefault && i === 0) ? "true" : "false");
+              await api.post(`/listings/${listingId}/media/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            } catch (imgErr) {
+              console.warn("Image upload failed, listing was still created:", imgErr);
+            }
           }
         }
         // Success
@@ -551,20 +716,39 @@ function AddListingForm() {
     } catch (err: any) {
       console.error("Listing create error:", err);
       if (err.response?.data?.errors) {
-        // Flatten nested errors from serializer
-        const errors = err.response.data.errors;
+        /*
+         * Server errors arrive nested, e.g.
+         *   { details: { themes: { "0": { style: ["This field is required."] } } } }
+         * Flatten to the same dotted keys the forms use ("themes.0.style"), so a
+         * server-side failure highlights the exact field a client-side one would.
+         */
         const flat: Record<string, string> = {};
-        Object.keys(errors).forEach((k) => {
-          if (k === "details" && typeof errors[k] === "object") {
-            Object.keys(errors[k]).forEach((dk) => {
-              flat[`details.${dk}`] = Array.isArray(errors[k][dk]) ? errors[k][dk].join(" ") : errors[k][dk];
-            });
-          } else {
-            flat[k] = Array.isArray(errors[k]) ? errors[k].join(" ") : errors[k];
+        const walk = (node: any, path: string[]) => {
+          if (node == null) return;
+          if (typeof node === "string") { flat[path.join(".")] = node; return; }
+          if (Array.isArray(node)) {
+            if (node.every((v) => typeof v === "string")) { flat[path.join(".")] = node.join(" "); return; }
+            node.forEach((v, i) => walk(v, [...path, String(i)]));
+            return;
           }
+          if (typeof node === "object") {
+            Object.entries(node).forEach(([k, v]) => walk(v, [...path, k]));
+          }
+        };
+        walk(err.response.data.errors, []);
+
+        // "details.themes.0.style" also maps to "themes.0.style" for the builder.
+        Object.keys(flat).forEach((k) => {
+          if (k.startsWith("details.themes.")) flat[k.replace("details.", "")] = flat[k];
         });
+
         setFormErrors(flat);
         setErrorMsg("Please fix the validation errors below.");
+
+        // Details live on step 2 — go back there so the flagged field is reachable.
+        const detailsFailed = Object.keys(flat).some((k) => k.startsWith("details.") || k.startsWith("themes."));
+        if (detailsFailed && step !== 2) setStep(2);
+        scrollToFirstError();
       } else {
         setErrorMsg(err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error || "An unexpected error occurred. Please try again.");
       }
@@ -601,9 +785,9 @@ function AddListingForm() {
   };
 
   return (
-    <div className="space-y-6 font-body max-w-3xl mx-auto pb-12">
+    <div className={`space-y-6 font-body mx-auto pb-12 ${type === "venue" ? "max-w-5xl" : "max-w-3xl"}`}>
       {/* Header Panel */}
-      <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+      <div className="flex items-start justify-between border-b border-gray-100 pb-4 gap-4">
         <div className="flex items-center gap-3">
           <Link href="/vendor/listings/add" className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:text-black hover:border-gray-400 transition-colors">
             <ArrowLeft size={16} />
@@ -618,8 +802,8 @@ function AddListingForm() {
             </div>
           </div>
         </div>
-        
-        {/* Progress Bar (Visual wow element) */}
+
+        {/* Step indicator — shown for every service type. */}
         <div className="hidden sm:flex items-center gap-1.5 bg-zinc-50 border border-gray-150 px-3.5 py-1.5 rounded-full">
           <div className={`w-2.5 h-2.5 rounded-full transition-all ${step >= 1 ? "bg-gold" : "bg-gray-250"}`} />
           <div className="w-6 h-0.5 bg-gray-200" />
@@ -685,31 +869,45 @@ function AddListingForm() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">City</label>
-                <input
-                  type="text"
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">State</label>
+                <select
+                  name="state"
+                  value={baseForm.state}
+                  onChange={(e) => {
+                    const nextState = e.target.value;
+                    const cities = citiesForState(nextState);
+                    setBaseForm((prev) => ({
+                      ...prev,
+                      state: nextState,
+                      city: cities.includes(prev.city) ? prev.city : (cities[0] || ""),
+                    }));
+                    handleDetailChange("service_cities", []);
+                  }}
+                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold bg-white ${
+                    formErrors.state ? "border-red-400" : "border-gray-200 text-gray-900"
+                  }`}
+                >
+                  {INDIAN_STATES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {formErrors.state && <p className="text-[10px] text-red-500 font-semibold">{formErrors.state}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Primary City</label>
+                <select
                   name="city"
                   value={baseForm.city}
                   onChange={handleBaseChange}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
+                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold bg-white ${
                     formErrors.city ? "border-red-400" : "border-gray-200 text-gray-900"
                   }`}
-                />
+                >
+                  {citiesForState(baseForm.state).map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
                 {formErrors.city && <p className="text-[10px] text-red-500 font-semibold">{formErrors.city}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">State</label>
-                <input
-                  type="text"
-                  name="state"
-                  value={baseForm.state}
-                  onChange={handleBaseChange}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors.state ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors.state && <p className="text-[10px] text-red-500 font-semibold">{formErrors.state}</p>}
               </div>
             </div>
 
@@ -727,6 +925,25 @@ function AddListingForm() {
               />
               {formErrors.address && <p className="text-[10px] text-red-500 font-semibold">{formErrors.address}</p>}
             </div>
+            {type === "caterer" && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Owner Phone Number *</label>
+                <input
+                  type="tel"
+                  name="owner_phone"
+                  value={baseForm.owner_phone}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setBaseForm((prev) => ({ ...prev, owner_phone: digits }));
+                  }}
+                  placeholder="10-digit mobile number"
+                  className={`w-full border rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none focus:border-gold bg-white ${
+                    formErrors.owner_phone ? "border-red-400" : "border-gray-200 text-gray-900"
+                  }`}
+                />
+                {formErrors.owner_phone && <p className="text-[10px] text-red-500 font-semibold">{formErrors.owner_phone}</p>}
+              </div>
+            )}
             {type === "caterer" && (
               <div className="space-y-4 pt-3 border-t border-gray-100">
                 <div>
@@ -789,17 +1006,22 @@ function AddListingForm() {
       {step === 2 && type === "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 font-heading">Business Profile & Branches</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Define your cuisines specialization, minimum order limits, and branch locations.</p>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Service Coverage & Capacity</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Select cuisines, guest limits, and the cities where you provide catering.</p>
           </div>
 
           <hr className="border-gray-100" />
 
           {/* Cuisines Checkboxes */}
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+          <div className="space-y-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Cuisines Offered</label>
+              <span className="text-[10px] text-gray-400">
+                {(detailForm.cuisines || []).length} selected
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {["Rajasthani", "Gujarati", "South Indian", "Multi-Cuisine", "Punjabi", "Continental", "Jain", "Chinese"].map((cuisine) => {
+              {CATERING_CUISINES.map((cuisine) => {
                 const cuisines = detailForm.cuisines || [];
                 const selected = cuisines.includes(cuisine.toLowerCase());
                 return (
@@ -807,14 +1029,14 @@ function AddListingForm() {
                     key={cuisine}
                     type="button"
                     onClick={() => {
-                      const next = selected 
+                      const next = selected
                         ? cuisines.filter((c: string) => c !== cuisine.toLowerCase())
                         : [...cuisines, cuisine.toLowerCase()];
                       handleDetailChange("cuisines", next);
                     }}
                     className={`px-3 py-2 rounded-xl border text-xs capitalize text-left transition-all flex items-center justify-between ${
-                      selected 
-                        ? "bg-gold/10 text-gold border-gold font-semibold" 
+                      selected
+                        ? "bg-gold/10 text-gold border-gold font-semibold"
                         : "bg-white text-gray-600 border-gray-250 hover:border-gray-400"
                     }`}
                   >
@@ -824,103 +1046,137 @@ function AddListingForm() {
                 );
               })}
             </div>
+            {/* Anything not in the built-in list — added below, removable here. */}
+            {(detailForm.cuisines || []).filter((c: string) => !CATERING_CUISINE_KEYS.includes(c)).length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(detailForm.cuisines || [])
+                  .filter((c: string) => !CATERING_CUISINE_KEYS.includes(c))
+                  .map((c: string) => (
+                    <span
+                      key={c}
+                      className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full bg-gold/10 border border-gold/40 text-gold text-xs font-semibold capitalize"
+                    >
+                      {c}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${c}`}
+                        onClick={() =>
+                          handleDetailChange(
+                            "cuisines",
+                            (detailForm.cuisines || []).filter((x: string) => x !== c)
+                          )
+                        }
+                        className="w-4 h-4 rounded-full hover:bg-gold/25 flex items-center justify-center"
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            {/* Add a cuisine that isn't listed. */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="text"
+                value={customCuisine}
+                onChange={(e) => setCustomCuisine(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomCuisine();
+                  }
+                }}
+                placeholder="Cuisine not listed? Type it here, e.g. Chettinad"
+                className="flex-grow border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+              />
+              <button
+                type="button"
+                onClick={addCustomCuisine}
+                disabled={!customCuisine.trim()}
+                className="shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-700 bg-white hover:border-gold hover:text-gold disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-1.5"
+              >
+                <Plus size={13} /> Add cuisine
+              </button>
+            </div>
+
             {formErrors["details.cuisines"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.cuisines"]}</p>}
           </div>
 
-          {/* Min Guest capacity */}
-          <div className="space-y-1.5 max-w-xs">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity Limit</label>
-            <input
-              type="number"
-              min={20}
-              placeholder="e.g. 50"
-              value={detailForm.min_guests || 50}
-              onChange={(e) => handleDetailChange("min_guests", parseInt(e.target.value) || 50)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-950"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity</label>
+              <input
+                type="number"
+                min={1}
+                placeholder="e.g. 50"
+                value={detailForm.min_guests || ""}
+                onChange={(e) => handleDetailChange("min_guests", e.target.value)}
+                className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
+                  formErrors["details.min_guests"] ? "border-red-400" : "border-gray-200 text-gray-950"
+                }`}
+              />
+              {formErrors["details.min_guests"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.min_guests"]}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Maximum Persons (optional)</label>
+              <input
+                type="number"
+                min={1}
+                placeholder="e.g. 2000"
+                value={detailForm.max_guests || ""}
+                onChange={(e) => handleDetailChange("max_guests", e.target.value)}
+                className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
+                  formErrors["details.max_guests"] ? "border-red-400" : "border-gray-200 text-gray-950"
+                }`}
+              />
+              {formErrors["details.max_guests"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.max_guests"]}</p>}
+            </div>
           </div>
 
-          {/* Branches Manager */}
-          <div className="space-y-4 pt-3 border-t border-gray-100">
+          <div className="space-y-3 pt-3 border-t border-gray-100">
             <div>
-              <h3 className="text-xs font-semibold text-gray-900">Branch Locations</h3>
-              <p className="text-[10px] text-gray-400">List operational branches to service leads across multiple areas.</p>
+              <h3 className="text-xs font-semibold text-gray-900">Service provided in cities</h3>
+              <p className="text-[10px] text-gray-400">Cities from {baseForm.state}. Search and select multiple service locations.</p>
             </div>
-            
-            <div className="space-y-3">
-              {detailForm.branches?.map((branch: any, idx: number) => (
-                <div key={idx} className="flex gap-3 items-end p-4 border border-gray-150 rounded-xl bg-zinc-50/50">
-                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Branch Name</label>
-                      <input
-                        type="text"
-                        value={branch.name}
-                        placeholder="e.g. Main Branch"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].name = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Address</label>
-                      <input
-                        type="text"
-                        value={branch.address}
-                        placeholder="e.g. Maharana Pratap Nagar"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].address = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phone Number</label>
-                      <input
-                        type="text"
-                        value={branch.phone}
-                        placeholder="e.g. 9876543210"
-                        onChange={(e) => {
-                          const list = [...detailForm.branches];
-                          list[idx].phone = e.target.value;
-                          handleDetailChange("branches", list);
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-950"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const list = detailForm.branches.filter((_: any, i: number) => i !== idx);
-                      handleDetailChange("branches", list);
-                    }}
-                    className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition-colors"
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              ))}
-              
-              <button
-                type="button"
-                onClick={() => {
-                  const list = [...(detailForm.branches || []), { name: "", address: "", phone: "" }];
-                  handleDetailChange("branches", list);
-                }}
-                className="w-full border border-dashed border-gray-300 py-3 rounded-xl hover:bg-slate-50 text-xs font-semibold text-gray-500 hover:text-black transition-all flex items-center justify-center gap-1"
-              >
-                + Add Operational Branch
-              </button>
+            <input
+              type="search"
+              placeholder={`Search cities in ${baseForm.state}…`}
+              value={detailForm.citySearch || ""}
+              onChange={(e) => handleDetailChange("citySearch", e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:border-gold"
+            />
+            <div className="max-h-56 overflow-y-auto border border-gray-150 rounded-xl p-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {citiesForState(baseForm.state)
+                .filter((city) => city.toLowerCase().includes((detailForm.citySearch || "").toLowerCase()))
+                .map((city) => {
+                  const selected = (detailForm.service_cities || []).includes(city);
+                  return (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => {
+                        const current = detailForm.service_cities || [];
+                        const next = selected ? current.filter((c: string) => c !== city) : [...current, city];
+                        handleDetailChange("service_cities", next);
+                      }}
+                      className={`px-3 py-2 rounded-lg border text-xs text-left ${
+                        selected
+                          ? "bg-gold/10 text-gold border-gold font-semibold"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      }`}
+                    >
+                      {city}
+                    </button>
+                  );
+                })}
             </div>
+            {(detailForm.service_cities || []).length > 0 && (
+              <p className="text-[11px] text-gray-500">Selected: {(detailForm.service_cities || []).join(", ")}</p>
+            )}
+            {formErrors["details.service_cities"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.service_cities"]}</p>}
           </div>
 
-          {/* Footer Controls */}
           <div className="flex justify-between items-center pt-3 border-t border-gray-50">
             <button
               onClick={handleBack}
@@ -1409,24 +1665,28 @@ function AddListingForm() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Minimum Guest Capacity (optional)</label>
                   <input
                     type="number"
-                    min={10}
+                    min={1}
                     value={detailForm.min_capacity}
+                    placeholder="Leave blank if not applicable"
                     onChange={(e) => handleDetailChange("min_capacity", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
+                      formErrors["details.min_capacity"] ? "border-red-400" : "border-gray-200 text-gray-900"
+                    }`}
                   />
+                  {formErrors["details.min_capacity"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.min_capacity"]}</p>}
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Maximum Guest Capacity</label>
                   <input
                     type="number"
-                    min={10}
+                    min={1}
                     value={detailForm.max_capacity}
                     onChange={(e) => handleDetailChange("max_capacity", e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
                       formErrors["details.max_capacity"] ? "border-red-400" : "border-gray-200 text-gray-900"
                     }`}
                   />
@@ -1434,9 +1694,13 @@ function AddListingForm() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/*
+                  Labels reserve two lines so a wrapping caption never drops its
+                  input out of line with the rest of the row.
+                */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of AC Rooms</label>
+                  <label className="form-row-label">Number of AC Rooms</label>
                   <input
                     type="number"
                     min={0}
@@ -1447,7 +1711,7 @@ function AddListingForm() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of Non-AC Rooms</label>
+                  <label className="form-row-label">Number of Non-AC Rooms</label>
                   <input
                     type="number"
                     min={0}
@@ -1458,14 +1722,28 @@ function AddListingForm() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Number of Halls</label>
+                  <label className="form-row-label">Number of Halls</label>
                   <input
                     type="number"
                     min={0}
                     value={detailForm.num_halls ?? 0}
                     onChange={(e) => handleDetailChange("num_halls", e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white text-gray-900"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="form-row-label">Total Capacity of Dormitory (people)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={detailForm.dormitory_capacity ?? ""}
+                    placeholder="Number of people"
+                    onChange={(e) => handleDetailChange("dormitory_capacity", e.target.value)}
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold bg-white ${
+                      formErrors["details.dormitory_capacity"] ? "border-red-400" : "border-gray-200 text-gray-900"
+                    }`}
+                  />
+                  {formErrors["details.dormitory_capacity"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.dormitory_capacity"]}</p>}
                 </div>
               </div>
 
@@ -1536,6 +1814,7 @@ function AddListingForm() {
                   {[
                     { key: "has_parking", label: "Parking Space" },
                     { key: "has_accommodation", label: "Guest Rooms" },
+                    { key: "has_pool", label: "Swimming Pool (optional)" },
                     { key: "is_ac", label: "A/C Hall" },
                     { key: "is_outdoor", label: "Open Lawn / Garden" },
                   ].map((item) => (
@@ -1970,179 +2249,71 @@ function AddListingForm() {
 
           {/* DECORATION DETAIL FORM */}
           {type === "decorator" && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Theme Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Royal Marigold Stage Setup, Glasshouse Minimalistic Decor"
-                  value={detailForm.name}
-                  onChange={(e) => handleDetailChange("name", e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white ${
-                    formErrors["details.name"] ? "border-red-400" : "border-gray-200 text-gray-900"
-                  }`}
-                />
-                {formErrors["details.name"] && <p className="text-[10px] text-red-500 font-semibold">{formErrors["details.name"]}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decor Style Style Theme</label>
-                <select
-                  value={detailForm.style}
-                  onChange={(e) => handleDetailChange("style", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900"
-                >
-                  {DECORATOR_STYLES.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Theme Description</label>
-                <textarea
-                  value={detailForm.description}
-                  rows={4}
-                  placeholder="Provide background, color themes, drapery, lighting specs, or materials used."
-                  onChange={(e) => handleDetailChange("description", e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] bg-white text-gray-900 resize-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Inclusions (What is included in this package?)</label>
-                <div className="flex flex-wrap gap-2 items-center p-2.5 border border-gray-200 rounded-xl bg-zinc-50/30">
-                  {detailForm.includes?.map((inc: string, idx: number) => (
-                    <span key={inc} className="bg-gold/10 text-gold border border-gold/15 text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1">
-                      {inc}
-                      <button 
-                        type="button" 
-                        onClick={() => handleDetailChange("includes", detailForm.includes.filter((_: any, i: number) => i !== idx))}
-                        className="text-gray-400 hover:text-black hover:bg-gold/10 rounded-full"
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    placeholder="Add item & press Enter"
-                    className="border-none bg-transparent focus:outline-none text-xs flex-grow p-1 text-gray-900 placeholder-slate-400 min-w-[150px]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const val = e.currentTarget.value.trim();
-                        if (val && !detailForm.includes?.includes(val)) {
-                          handleDetailChange("includes", [...(detailForm.includes || []), val]);
-                          e.currentTarget.value = "";
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <p className="text-[9px] text-gray-400 mt-1">Type an item (e.g. LED stage wall, Marigold drapery, Truss setup) and press Enter to save</p>
-              </div>
-
-              {/* Decoration Tiers Table */}
-              <div className="space-y-4 pt-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Decoration Tiers (Pricing & Descriptions)</label>
-                <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
-                        <th className="px-4 py-3 w-1/4">Tier</th>
-                        <th className="px-4 py-3 w-1/4">Price (₹)</th>
-                        <th className="px-4 py-3 w-1/2">Inclusions & Area Specs</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-sm">
-                      {[
-                        { key: "low", label: "Silver (Budget)" },
-                        { key: "medium", label: "Gold (Standard)" },
-                        { key: "average", label: "Platinum (Premium)" },
-                        { key: "high", label: "Luxury (High)" }
-                      ].map(({ key, label }) => {
-                        const currentTiers = detailForm.tiers || [];
-                        let tierData = currentTiers.find((t: any) => t.tier === key);
-                        if (!tierData) {
-                          tierData = { tier: key, price: "", description: "" };
-                        }
-                        return (
-                          <tr key={key} className="hover:bg-gray-50/30">
-                            <td className="px-4 py-3 font-semibold text-gray-700">{label}</td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                placeholder={`e.g. ${key === "low" ? "15000" : key === "medium" ? "30000" : key === "average" ? "60000" : "120000"}`}
-                                value={tierData.price || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].price = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: e.target.value, description: "" });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                placeholder={`e.g. ${key === "low" ? "Standard entrance and stage backdrop (up to 400 sqft)" : key === "medium" ? "Entrance arch, stage backdrop, 10 table centerpieces (up to 800 sqft)" : "Luxury floral entry, premium stage draping, 20 centerpieces, pathway lighting"}`}
-                                value={tierData.description || ""}
-                                onChange={(e) => {
-                                  const nextTiers = [...(detailForm.tiers || [])];
-                                  const idx = nextTiers.findIndex((t: any) => t.tier === key);
-                                  if (idx > -1) {
-                                    nextTiers[idx].description = e.target.value;
-                                  } else {
-                                    nextTiers.push({ tier: key, price: "", description: e.target.value });
-                                  }
-                                  handleDetailChange("tiers", nextTiers);
-                                }}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-gold bg-white text-gray-900"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <DecorationBuilder
+              themes={detailForm.themes && detailForm.themes.length ? detailForm.themes : [emptyTheme()]}
+              onChange={(next) => handleDetailChange("themes", next)}
+              errors={formErrors}
+            />
           )}
 
-          {/* Footer Controls */}
-          <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-gray-100">
             <button
-              onClick={handleBack}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1"
+              type="button"
+              onClick={() => setStep(1)}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-900 transition-all flex items-center justify-center gap-1.5"
             >
               <ArrowLeft size={13} /> Back
             </button>
             <button
+              type="button"
               onClick={handleNext}
-              className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
+              className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
             >
-              Configure Media <ArrowRight size={14} />
+              Continue to Media <ArrowRight size={13} />
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 3: MEDIA UPLOAD & SUBMIT FOR NON-CATERERS */}
+      {/* STEP 3: MEDIA UPLOAD (non-caterer) */}
       {step === 3 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 font-heading">Media Showcase Upload</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Attach high-resolution photos showcasing your venue setup, wedding portfolio, makeup work, or sound stages.</p>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Photos & Media</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Add photos of your work. The one you mark as default is shown on your listing card.
+            </p>
           </div>
 
           <hr className="border-gray-100" />
+
+          {(type === "venue" || type === "decorator") && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Photo folder</label>
+              <div className="flex flex-wrap gap-2">
+                {(type === "venue" ? VENUE_MEDIA_FOLDERS : DECORATION_MEDIA_FOLDERS).map((folder) => (
+                  <button
+                    key={folder.value}
+                    type="button"
+                    onClick={() => setActiveMediaFolder(folder.value)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                      activeMediaFolder === folder.value
+                        ? "bg-gold text-black border-gold"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {folder.label}
+                    <span className="ml-1 text-[10px] opacity-70">
+                      ({images.filter((img) => img.folder === folder.value).length})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Upload photos into <span className="font-semibold text-gray-700">{(type === "venue" ? VENUE_MEDIA_FOLDERS : DECORATION_MEDIA_FOLDERS).find((f) => f.value === activeMediaFolder)?.label}</span>. Files are stored as upload/GSTIN/{type === "venue" ? "venue" : "decoration"}/{activeMediaFolder}/
+              </p>
+            </div>
+          )}
 
           {/* Image Upload Area */}
           <div className="space-y-4">
@@ -2154,7 +2325,7 @@ function AddListingForm() {
                 onChange={handleImageChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
-              <div className="w-12 h-12 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15 group-hover:bg-gold group-hover:text-black transition-all">
+              <div className="service-tile w-12 h-12 rounded-full">
                 <Upload size={20} />
               </div>
               <div className="text-center">
@@ -2165,23 +2336,44 @@ function AddListingForm() {
 
             {/* Previews Grid */}
             {images.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-                {images.map((img, idx) => (
-                  <div key={idx} className="relative h-28 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
-                    <img
-                      src={img.preview}
-                      alt={`Preview ${idx + 1}`}
-                      className="object-cover w-full h-full"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+              <div className="space-y-3 pt-2">
+                {(type === "venue" || type === "decorator") && (
+                  <p className="text-[11px] text-gray-500">
+                    Showing {activeMediaFolder} photos. Click a photo to set it as the listing cover.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {((type === "venue" || type === "decorator") ? images.filter((img) => img.folder === activeMediaFolder) : images).map((img) => {
+                    const realIdx = images.indexOf(img);
+                    return (
+                      <div key={realIdx} className={`relative h-28 border rounded-xl overflow-hidden shadow-sm group ${img.isDefault ? "border-gold ring-2 ring-gold/40" : "border-gray-150"}`}>
+                        <img
+                          src={img.preview}
+                          alt={`Preview ${realIdx + 1}`}
+                          className="object-cover w-full h-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(realIdx)}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                        >
+                          <X size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImages((prev) => prev.map((item, i) => ({ ...item, isDefault: i === realIdx })));
+                          }}
+                          className={`absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-bold rounded-md py-1 ${
+                            img.isDefault ? "bg-gold text-black" : "bg-black/60 text-white hover:bg-black"
+                          }`}
+                        >
+                          {img.isDefault ? "Default cover" : "Set as default"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -2240,7 +2432,36 @@ function AddListingForm() {
               <span className="w-4 h-4 rounded-full bg-gold text-black flex items-center justify-center text-[8px] font-black">+</span>
               Add Dish to Library
             </h4>
-            
+
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-gray-400 uppercase">Course</label>
+              <select
+                id="new-dish-course"
+                value={newDishCourse}
+                onChange={(e) => {
+                  setNewDishCourse(e.target.value);
+                  const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
+                  if (nameEl) nameEl.value = "";
+                  const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
+                  if (selectCatalog) selectCatalog.value = "";
+                }}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+              >
+                <option value="starter">Starter</option>
+                <option value="live">Live Counter</option>
+                <option value="soup">Soup</option>
+                <option value="special_veg">Special Veg</option>
+                <option value="seasonal_veg">Seasonal Veg</option>
+                <option value="dal">Dal</option>
+                <option value="rice">Rice</option>
+                <option value="breads">Breads Basket</option>
+                <option value="dessert">Dessert</option>
+                <option value="welcome">Welcome Drink</option>
+                <option value="special_additions">Special Additions</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
             {/* Global Catalog Selector */}
             {masterFoodItems.length > 0 && (
               <div className="space-y-1 pb-1">
@@ -2295,7 +2516,7 @@ function AddListingForm() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
+              <div className="space-y-1 sm:col-span-2">
                 <label className="text-[9px] font-bold text-gray-400 uppercase">Dish Name *</label>
                 <input
                   type="text"
@@ -2303,34 +2524,6 @@ function AddListingForm() {
                   placeholder="e.g. Paneer Pasanda, Dal Makhni"
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/20"
                 />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-bold text-gray-400 uppercase">Course</label>
-                <select
-                  id="new-dish-course"
-                  value={newDishCourse}
-                  onChange={(e) => {
-                    setNewDishCourse(e.target.value);
-                    const nameEl = document.getElementById("new-dish-name") as HTMLInputElement;
-                    if (nameEl) nameEl.value = ""; // Clear input on course change
-                    const selectCatalog = document.getElementById("select-master-food") as HTMLSelectElement;
-                    if (selectCatalog) selectCatalog.value = ""; // Reset catalog select
-                  }}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
-                >
-                  <option value="starter">Starter</option>
-                  <option value="live">Live Counter</option>
-                  <option value="soup">Soup</option>
-                  <option value="special_veg">Special Veg</option>
-                  <option value="seasonal_veg">Seasonal Veg</option>
-                  <option value="dal">Dal</option>
-                  <option value="rice">Rice</option>
-                  <option value="breads">Breads Basket</option>
-                  <option value="dessert">Dessert</option>
-                  <option value="welcome">Welcome Drink</option>
-                  <option value="special_additions">Special Additions</option>
-                  <option value="other">Other</option>
-                </select>
               </div>
             </div>
 
@@ -2751,6 +2944,12 @@ function AddListingForm() {
                               otherEl.classList.add("hidden");
                             }
                           }
+                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                          const existing = selections.find((s: MenuSelection) => s.category === e.target.value);
+                          const countEl = document.getElementById(`sel-count-${idx}`) as HTMLSelectElement;
+                          if (countEl) {
+                            countEl.value = existing?.count ? String(existing.count) : "none";
+                          }
                         }}
                         className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
                       >
@@ -2800,13 +2999,19 @@ function AddListingForm() {
                           if (category === "Other" && !customName) return;
 
                           const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                          const existingIdx = selections.findIndex((s: MenuSelection) =>
+                            s.category === category && (category !== "Other" || s.customName === customName)
+                          );
+
                           const newSelection: MenuSelection = {
                             category,
                             customName,
                             count
                           };
 
-                          const updated = [...selections, newSelection];
+                          const updated = existingIdx >= 0
+                            ? selections.map((s: MenuSelection, i: number) => (i === existingIdx ? newSelection : s))
+                            : [...selections, newSelection];
                           const list = [...detailForm.packages];
                           list[idx] = {
                             ...pkg,
@@ -2819,7 +3024,15 @@ function AddListingForm() {
                         }}
                         className="w-full btn-gold rounded-lg py-1.5 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm h-[32px]"
                       >
-                        + Add Item
+                        {(() => {
+                          const courseEl = typeof document !== "undefined"
+                            ? document.getElementById(`sel-course-${idx}`) as HTMLSelectElement | null
+                            : null;
+                          const category = courseEl?.value || "Starters";
+                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                          const exists = selections.some((s: MenuSelection) => s.category === category);
+                          return exists ? "Update Item" : "+ Add Item";
+                        })()}
                       </button>
                     </div>
                   </div>
@@ -2882,14 +3095,17 @@ function AddListingForm() {
 
 export default function AddListingFormPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-gray-400">
-        <Loader2 size={32} className="animate-spin text-gold" />
-        <p className="text-sm">Loading dynamic listing form...</p>
-      </div>
-    }>
-      <AddListingForm />
-    </Suspense>
+    /* Guard the form itself too — the picker can be skipped via a direct URL. */
+    <ApprovalGate>
+      <Suspense fallback={
+        <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-gray-400">
+          <Loader2 size={32} className="animate-spin text-gold" />
+          <p className="text-sm">Loading dynamic listing form...</p>
+        </div>
+      }>
+        <AddListingForm />
+      </Suspense>
+    </ApprovalGate>
   );
 }
 

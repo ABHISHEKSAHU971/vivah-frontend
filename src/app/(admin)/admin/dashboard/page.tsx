@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Check, 
+  CheckCircle, 
   X, 
   ShieldAlert, 
   Building, 
@@ -118,9 +119,29 @@ interface Booking {
   created_at: string;
 }
 
+interface PendingVenue {
+  id: number;
+  name: string;
+  venue_type: string;
+  city: string;
+  state: string;
+  max_capacity: number;
+  min_capacity?: number | null;
+  price_per_day: string | number;
+  is_verified: boolean;
+  created_at: string;
+  cover_image?: string | null;
+  images?: { image: string; is_default?: boolean }[];
+  vendor?: { business_name?: string; gstin?: string } | null;
+  vendor_name?: string;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"approvals" | "listings" | "queries" | "bookings">("approvals");
+  const [activeTab, setActiveTab] = useState<"approvals" | "venues" | "listings" | "queries" | "bookings">("approvals");
+  // Venues awaiting admin verification — until verified they stay off /venues.
+  const [pendingVenues, setPendingVenues] = useState<PendingVenue[]>([]);
+  const [venueSearch, setVenueSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<string | null>(null);
 
@@ -226,6 +247,9 @@ export default function AdminDashboard() {
       const listingRes = await api.get("/listings/admin/");
       setListings(listingRes.data?.data?.listings || []);
 
+      const pendingVenueRes = await api.get("/venues/venues/pending-verification/");
+      setPendingVenues(pendingVenueRes.data?.data?.venues || []);
+
       const inquiryQuery = selectedVenueId !== "all" ? `?venue_id=${selectedVenueId}` : "";
       const inquiryRes = await api.get(`/venues/admin/inquiries/${inquiryQuery}`);
       setInquiries(inquiryRes.data?.data?.inquiries || []);
@@ -276,6 +300,25 @@ export default function AdminDashboard() {
   const triggerToast = (msg: string) => {
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 4000);
+  };
+
+  /**
+   * Verify / un-verify a venue. A venue only appears on the public /venues
+   * catalog once its vendor is approved AND the venue itself is verified.
+   */
+  const handleVenueVerification = async (venueId: number, verify: boolean) => {
+    setSubmitting(true);
+    try {
+      await api.post(`/venues/venues/${venueId}/${verify ? "verify" : "unverify"}/`);
+      setPendingVenues((prev) =>
+        verify ? prev.filter((v) => v.id !== venueId) : prev
+      );
+      triggerToast(verify ? "Venue approved — it is now live on /venues." : "Venue verification revoked.");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to update venue.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleApprove = async (profileId: number) => {
@@ -539,7 +582,7 @@ export default function AdminDashboard() {
           );
         })}
         {Object.keys(details).length > 4 && (
-          <span className="px-2 py-1 text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md font-semibold italic">
+          <span className="px-2 py-1 text-[9px] text-gold bg-gold/10 border border-gold/25 rounded-md font-semibold italic">
             +{Object.keys(details).length - 4} details
           </span>
         )}
@@ -550,8 +593,8 @@ export default function AdminDashboard() {
   if (loading && vendors.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[440px] text-gray-500">
-        <RefreshCw className="animate-spin text-indigo-600 mb-4" size={36} />
-        <p className="text-sm font-semibold tracking-wide animate-pulse text-indigo-950">Synchronizing database metrics...</p>
+        <RefreshCw className="animate-spin text-gold mb-4" size={36} />
+        <p className="text-sm font-semibold tracking-wide animate-pulse text-[#101828]">Synchronizing database metrics...</p>
       </div>
     );
   }
@@ -572,21 +615,14 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-zinc-900 to-indigo-950 rounded-3xl border border-white/5 shadow-md relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-            Administrator Mode
-          </span>
-          <h1 className="text-3xl font-bold font-heading text-white mt-3">Platform Control Center</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Oversee registrations, catalog listings, customer inquiries, and scheduled venue bookings.
-          </p>
-        </div>
-        <button 
-          onClick={fetchData} 
-          className="relative z-10 flex items-center justify-center gap-2 self-start md:self-center px-4.5 py-2.5 text-xs font-bold text-white bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 rounded-xl transition-all shadow-sm"
+      {/* Action bar — the console top bar already carries the page title. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-[#667085]">
+          Oversee registrations, catalog listings, customer inquiries and scheduled venue bookings.
+        </p>
+        <button
+          onClick={fetchData}
+          className="btn-gold-glossy inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs shrink-0"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Sync Datasets
@@ -602,70 +638,54 @@ export default function AdminDashboard() {
 
       {/* Stats Summary Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 bg-white border border-gray-150 hover:border-indigo-300 rounded-2xl shadow-sm transition-all duration-300 group hover:-translate-y-0.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Approval Queue</span>
-            <div className="p-2 bg-amber-50 group-hover:bg-amber-100 text-amber-500 rounded-xl transition-colors">
-              <UserCheck size={16} />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-gray-900">{stats.pendingVendors}</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Vendors pending approval</p>
-          </div>
+        <div className="console-card console-card-hover p-4">
+          <span className={`console-tile tile-gold`}>
+            <UserCheck size={18} />
+          </span>
+          <p className="console-stat-label mt-3.5">Approval Queue</p>
+          <p className="console-stat-value mt-1">{stats.pendingVendors}</p>
+          <p className="console-stat-caption mt-1">Vendors pending approval</p>
         </div>
 
-        <div className="p-5 bg-white border border-gray-150 hover:border-indigo-300 rounded-2xl shadow-sm transition-all duration-300 group hover:-translate-y-0.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Listings</span>
-            <div className="p-2 bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 rounded-xl transition-colors">
-              <Building size={16} />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-gray-900">{stats.totalListings}</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Platform offerings registered</p>
-          </div>
+        <div className="console-card console-card-hover p-4">
+          <span className={`console-tile tile-navy`}>
+            <Building size={18} />
+          </span>
+          <p className="console-stat-label mt-3.5">Total Listings</p>
+          <p className="console-stat-value mt-1">{stats.totalListings}</p>
+          <p className="console-stat-caption mt-1">Platform offerings registered</p>
         </div>
 
-        <div className="p-5 bg-white border border-gray-150 hover:border-indigo-300 rounded-2xl shadow-sm transition-all duration-300 group hover:-translate-y-0.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Venue Inquiries</span>
-            <div className="p-2 bg-rose-50 group-hover:bg-rose-100 text-rose-500 rounded-xl transition-colors">
-              <MessageSquare size={16} />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-gray-900">{stats.totalQueries}</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Customer leads logged</p>
-          </div>
+        <div className="console-card console-card-hover p-4">
+          <span className={`console-tile tile-terracota`}>
+            <MessageSquare size={18} />
+          </span>
+          <p className="console-stat-label mt-3.5">Venue Inquiries</p>
+          <p className="console-stat-value mt-1">{stats.totalQueries}</p>
+          <p className="console-stat-caption mt-1">Customer leads logged</p>
         </div>
 
-        <div className="p-5 bg-white border border-gray-150 hover:border-indigo-300 rounded-2xl shadow-sm transition-all duration-300 group hover:-translate-y-0.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Confirmed Events</span>
-            <div className="p-2 bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 rounded-xl transition-colors">
-              <Calendar size={16} />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-gray-900">{stats.confirmedBookings}</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Locked dates in calendar</p>
-          </div>
+        <div className="console-card console-card-hover p-4">
+          <span className={`console-tile tile-sage`}>
+            <Calendar size={18} />
+          </span>
+          <p className="console-stat-label mt-3.5">Confirmed Events</p>
+          <p className="console-stat-value mt-1">{stats.confirmedBookings}</p>
+          <p className="console-stat-caption mt-1">Locked dates in calendar</p>
         </div>
       </div>
 
       {/* Main Console Panels */}
-      <div className="border border-gray-150 rounded-2xl bg-white overflow-hidden shadow-sm">
+      <div className="console-card overflow-hidden">
         
         {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-150 overflow-x-auto scrollbar-none bg-slate-50/50">
+        <div className="flex border-b border-[#EAECF0] overflow-x-auto scrollbar-none bg-[#FCFCFD]">
           <button
             onClick={() => setActiveTab("approvals")}
             className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
               activeTab === "approvals"
-                ? "border-indigo-600 text-indigo-600 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-900 hover:bg-slate-50"
+                ? "border-gold text-[#101828] bg-white"
+                : "border-transparent text-[#667085] hover:text-[#101828] hover:bg-white"
             }`}
           >
             <UserCheck size={15} />
@@ -678,11 +698,28 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={() => setActiveTab("venues")}
+            className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
+              activeTab === "venues"
+                ? "border-gold text-[#101828] bg-white"
+                : "border-transparent text-[#667085] hover:text-[#101828] hover:bg-white"
+            }`}
+          >
+            <Building size={15} />
+            Venue Approvals
+            {pendingVenues.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-[9px] font-bold text-white bg-amber-500 rounded-full">
+                {pendingVenues.length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab("listings")}
             className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
               activeTab === "listings"
-                ? "border-indigo-600 text-indigo-600 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-900 hover:bg-slate-50"
+                ? "border-gold text-[#101828] bg-white"
+                : "border-transparent text-[#667085] hover:text-[#101828] hover:bg-white"
             }`}
           >
             <Building size={15} />
@@ -693,8 +730,8 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab("queries")}
             className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
               activeTab === "queries"
-                ? "border-indigo-600 text-indigo-600 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-900 hover:bg-slate-50"
+                ? "border-gold text-[#101828] bg-white"
+                : "border-transparent text-[#667085] hover:text-[#101828] hover:bg-white"
             }`}
           >
             <MessageSquare size={15} />
@@ -705,8 +742,8 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab("bookings")}
             className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-wide border-b-2 transition-all whitespace-nowrap ${
               activeTab === "bookings"
-                ? "border-indigo-600 text-indigo-600 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-900 hover:bg-slate-50"
+                ? "border-gold text-[#101828] bg-white"
+                : "border-transparent text-[#667085] hover:text-[#101828] hover:bg-white"
             }`}
           >
             <Calendar size={15} />
@@ -729,7 +766,7 @@ export default function AdminDashboard() {
                     placeholder="Search by business name, owner, phone, email..."
                     value={approvalSearch}
                     onChange={(e) => setApprovalSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                    className="w-full pl-9 pr-4 py-2.5 text-xs border border-[#EAECF0] bg-white rounded-xl focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] placeholder-[#98A2B3] transition-all"
                   />
                 </div>
                 <div className="relative">
@@ -739,7 +776,7 @@ export default function AdminDashboard() {
                     placeholder="Filter by city, state..."
                     value={approvalLocation}
                     onChange={(e) => setApprovalLocation(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                    className="w-full pl-9 pr-4 py-2.5 text-xs border border-[#EAECF0] bg-white rounded-xl focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] placeholder-[#98A2B3] transition-all"
                   />
                 </div>
               </div>
@@ -753,8 +790,8 @@ export default function AdminDashboard() {
                       onClick={() => setVendorFilter(f)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize border transition-all ${
                         vendorFilter === f
-                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                          ? "bg-[#101828] text-white border-[#101828] shadow-sm"
+                          : "bg-white text-[#667085] border-[#EAECF0] hover:text-[#101828] hover:shadow-sm"
                       }`}
                     >
                       {f} Queue
@@ -791,7 +828,7 @@ export default function AdminDashboard() {
                       {filteredVendors.map(vendor => (
                         <tr 
                           key={vendor.id} 
-                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-indigo-600 text-gray-700 transition-all duration-150"
+                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-gold text-gray-700 transition-all duration-150"
                         >
                           <td className="p-4">
                             <div className="flex items-center gap-3">
@@ -802,7 +839,7 @@ export default function AdminDashboard() {
                                   className="w-10 h-10 rounded-xl object-cover border border-gray-200 bg-gray-50"
                                 />
                               ) : (
-                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-bold text-xs uppercase border border-indigo-100">
+                                <div className="w-10 h-10 bg-gold/10 rounded-xl flex items-center justify-center text-gold font-bold text-xs uppercase border border-gold/25">
                                   {vendor.business_name.substring(0, 2)}
                                 </div>
                               )}
@@ -813,7 +850,7 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td className="p-4">
-                            <span className="px-2.5 py-0.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md capitalize">
+                            <span className="px-2.5 py-0.5 text-[9px] font-bold text-gold bg-gold/10 border border-gold/25 rounded-md capitalize">
                               {vendor.vendor_type}
                             </span>
                           </td>
@@ -883,11 +920,137 @@ export default function AdminDashboard() {
           )}
 
           {/* TAB 2: VENDOR LISTINGS */}
+          {/* TAB: VENUE APPROVALS */}
+          {activeTab === "venues" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 font-heading">Venues Awaiting Approval</h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    A venue stays off the public catalog until you approve it here — and its vendor must be approved too.
+                  </p>
+                </div>
+                <div className="relative sm:w-72">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Search venue, city or vendor..."
+                    value={venueSearch}
+                    onChange={(e) => setVenueSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 text-xs border border-[#EAECF0] bg-white rounded-xl focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] placeholder-[#98A2B3] transition-all"
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const q = venueSearch.trim().toLowerCase();
+                const rows = pendingVenues.filter((v) =>
+                  !q ||
+                  [v.name, v.city, v.state, v.vendor?.business_name, v.vendor_name]
+                    .some((f) => (f || "").toString().toLowerCase().includes(q))
+                );
+
+                if (rows.length === 0) {
+                  return (
+                    <div className="min-h-[240px] flex flex-col items-center justify-center gap-3 text-center border border-dashed border-gray-200 rounded-2xl bg-slate-50/60">
+                      <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center border border-emerald-100">
+                        <CheckCircle size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {pendingVenues.length === 0 ? "No venues awaiting approval" : "No venues match your search"}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {pendingVenues.length === 0
+                            ? "New venues will appear here as soon as vendors submit them."
+                            : "Try a different venue, city or vendor name."}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {rows.map((venue) => {
+                      const cover =
+                        venue.cover_image ||
+                        venue.images?.find((i) => i.is_default)?.image ||
+                        venue.images?.[0]?.image;
+                      const vendorName = venue.vendor?.business_name || venue.vendor_name || "Unknown vendor";
+                      return (
+                        <div
+                          key={venue.id}
+                          className="border border-gray-150 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
+                        >
+                          <div className="flex gap-4 p-4">
+                            <div className="w-24 h-24 shrink-0 rounded-xl bg-slate-100 border border-gray-100 overflow-hidden flex items-center justify-center">
+                              {cover ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={cover} alt={venue.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <Building size={20} className="text-gray-300" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-grow space-y-1.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="text-sm font-bold text-gray-900 font-heading truncate">{venue.name}</h4>
+                                <span className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-200">
+                                  Pending
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-500 truncate">{vendorName}</p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
+                                <span className="capitalize">{(venue.venue_type || "").replace(/_/g, " ")}</span>
+                                <span>{venue.city}, {venue.state}</span>
+                                <span>
+                                  {venue.min_capacity ? `${venue.min_capacity}–` : "up to "}
+                                  {venue.max_capacity} guests
+                                </span>
+                                <span>&#8377;{Number(venue.price_per_day || 0).toLocaleString("en-IN")}/day</span>
+                              </div>
+                              {venue.vendor?.gstin && (
+                                <p className="text-[10px] text-gray-400 font-mono">GSTIN {venue.vendor.gstin}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-auto flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-t border-gray-100">
+                            <span className="text-[10px] text-gray-400">
+                              Submitted {new Date(venue.created_at).toLocaleDateString()}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`/venues/${venue.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-900 transition-all"
+                              >
+                                Preview
+                              </a>
+                              <button
+                                onClick={() => handleVenueVerification(venue.id, true)}
+                                disabled={submitting}
+                                className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-all shadow-sm"
+                              >
+                                Approve &amp; publish
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {activeTab === "listings" && (
             <div className="space-y-6">
               
               {/* Search & Statistics */}
-              <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-gray-150 shadow-sm">
+              <div className="space-y-4 bg-[#FCFCFD] p-5 rounded-2xl border border-[#EAECF0]">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="relative">
                     <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
@@ -896,7 +1059,7 @@ export default function AdminDashboard() {
                       placeholder="Search by listing name or vendor business..."
                       value={listingSearch}
                       onChange={(e) => setListingSearch(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                      className="w-full pl-9 pr-4 py-2.5 text-xs border border-[#EAECF0] bg-white rounded-xl focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] placeholder-[#98A2B3] transition-all"
                     />
                   </div>
                   <div className="relative">
@@ -906,7 +1069,7 @@ export default function AdminDashboard() {
                       placeholder="Filter by location / city..."
                       value={locationFilter}
                       onChange={(e) => setLocationFilter(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 bg-white rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 shadow-sm"
+                      className="w-full pl-9 pr-4 py-2.5 text-xs border border-[#EAECF0] bg-white rounded-xl focus:outline-none focus:border-gold focus:shadow-[0_0_0_3px_rgba(201,164,64,0.15)] placeholder-[#98A2B3] transition-all"
                     />
                   </div>
                 </div>
@@ -930,8 +1093,8 @@ export default function AdminDashboard() {
                         onClick={() => setCategoryFilter(cat.code)}
                         className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all ${
                           categoryFilter === cat.code
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            ? "bg-[#101828] text-white border-[#101828] shadow-sm"
+                            : "bg-white text-[#667085] border-[#EAECF0] hover:text-[#101828] hover:shadow-sm"
                         }`}
                       >
                         {cat.label}
@@ -956,8 +1119,8 @@ export default function AdminDashboard() {
                         onClick={() => setStatusFilter(st.code)}
                         className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all ${
                           statusFilter === st.code
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                            ? "bg-[#101828] text-white border-[#101828] shadow-sm"
+                            : "bg-white text-[#667085] border-[#EAECF0] hover:text-[#101828] hover:shadow-sm"
                         }`}
                       >
                         {st.label}
@@ -972,7 +1135,7 @@ export default function AdminDashboard() {
                 <span className="text-[11px] font-semibold text-gray-400">
                   Showing {filteredListings.length} listing(s)
                 </span>
-                <span className="text-[11px] font-bold text-indigo-600">
+                <span className="text-[11px] font-bold text-gold">
                   Total Catalog size: {listings.length}
                 </span>
               </div>
@@ -1003,13 +1166,13 @@ export default function AdminDashboard() {
                       {filteredListings.map(listing => (
                         <tr 
                           key={listing.id} 
-                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-indigo-600 text-gray-700 transition-all duration-150"
+                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-gold text-gray-700 transition-all duration-150"
                         >
                           <td className="p-4 font-bold text-slate-900 text-sm">
                             {listing.name}
                           </td>
                           <td className="p-4">
-                            <span className="px-2 py-0.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md capitalize">
+                            <span className="px-2 py-0.5 text-[9px] font-bold text-gold bg-gold/10 border border-gold/25 rounded-md capitalize">
                               {listing.service_type}
                             </span>
                           </td>
@@ -1075,7 +1238,7 @@ export default function AdminDashboard() {
                   <select
                     value={selectedVenueId}
                     onChange={(e) => setSelectedVenueId(e.target.value)}
-                    className="ml-2 px-3 py-1.5 text-xs bg-white border border-gray-250 rounded-xl focus:outline-none focus:border-indigo-500 font-bold text-slate-800 cursor-pointer shadow-sm"
+                    className="ml-2 px-3 py-1.5 text-xs bg-white border border-gray-250 rounded-xl focus:outline-none focus:border-gold font-bold text-slate-800 cursor-pointer shadow-sm"
                   >
                     <option value="all">All Venues</option>
                     {venuesList.map(v => (
@@ -1083,7 +1246,7 @@ export default function AdminDashboard() {
                     ))}
                   </select>
                 </div>
-                <span className="text-[11px] font-bold text-indigo-600">
+                <span className="text-[11px] font-bold text-gold">
                   {inquiries.length} Customer inquiry(s) active
                 </span>
               </div>
@@ -1098,7 +1261,7 @@ export default function AdminDashboard() {
                   {selectedVenueId !== "all" && (
                     <button
                       onClick={() => setSelectedVenueId("all")}
-                      className="mt-4 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all"
+                      className="mt-4 px-4 py-2 text-xs font-bold bg-[#101828] hover:bg-[#1D2939] text-white rounded-xl shadow-sm transition-all"
                     >
                       Clear Selection Filters
                     </button>
@@ -1139,19 +1302,19 @@ export default function AdminDashboard() {
                             return (
                               <tr
                                 key={grp.group_key}
-                                className={`hover:bg-indigo-50/40 transition-colors ${
-                                  isSelected ? "bg-indigo-50/60 font-semibold" : ""
+                                className={`hover:bg-gold/10/40 transition-colors ${
+                                  isSelected ? "bg-gold/10/60 font-semibold" : ""
                                 }`}
                               >
                                 <td className="p-3 text-slate-400 font-medium">{index + 1}</td>
                                 <td className="p-3 font-bold text-slate-900">{grp.name}</td>
                                 <td className="p-3 text-slate-600 capitalize">{grp.location || "N/A"}</td>
                                 <td className="p-3 font-medium text-slate-800">{grp.phone}</td>
-                                <td className="p-3 font-semibold text-indigo-600">
+                                <td className="p-3 font-semibold text-gold">
                                   {grp.event_date ? new Date(grp.event_date).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' }) : "Not Set"}
                                 </td>
                                 <td className="p-3">
-                                  <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-gold/10 text-gold border border-gold/30">
                                     {grp.inquiry_count} {grp.inquiry_count === 1 ? 'Inquiry' : 'Inquiries'}
                                   </span>
                                 </td>
@@ -1171,8 +1334,8 @@ export default function AdminDashboard() {
                                     onClick={() => handleViewCustomerDetails(grp.phone)}
                                     className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all inline-flex items-center gap-1 ${
                                       isSelected
-                                        ? "bg-indigo-600 text-white shadow-sm"
-                                        : "bg-slate-100 hover:bg-indigo-50 text-indigo-600 border border-indigo-100"
+                                        ? "bg-[#101828] text-white shadow-sm"
+                                        : "bg-slate-100 hover:bg-gold/10 text-gold border border-gold/25"
                                     }`}
                                   >
                                     {isSelected ? "Hide Details" : "View Full Details"}
@@ -1187,10 +1350,10 @@ export default function AdminDashboard() {
 
                     {/* EXPANDED CUSTOMER FULL DETAILS PANEL */}
                     {selectedCustomerPhone && (
-                      <div className="border border-indigo-200 bg-gradient-to-br from-indigo-50/50 via-white to-slate-50 p-6 rounded-2xl shadow-md space-y-6 animate-fade-in relative">
-                        <div className="flex items-center justify-between border-b border-indigo-100 pb-4">
+                      <div className="border border-gold/30 bg-gradient-to-br from-gold/5 via-white to-slate-50 p-6 rounded-2xl shadow-md space-y-6 animate-fade-in relative">
+                        <div className="flex items-center justify-between border-b border-gold/25 pb-4">
                           <div>
-                            <span className="text-[10px] uppercase font-extrabold text-indigo-600 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                            <span className="text-[10px] uppercase font-extrabold text-gold bg-gold/15 border border-gold/30 px-2.5 py-0.5 rounded-full">
                               Customer Inquiry Details
                             </span>
                             <h4 className="text-lg font-bold text-slate-900 mt-1 flex items-center gap-2">
@@ -1212,7 +1375,7 @@ export default function AdminDashboard() {
                         </div>
 
                         {loadingCustomerDetails ? (
-                          <div className="py-8 text-center text-xs text-indigo-600 font-semibold flex items-center justify-center gap-2">
+                          <div className="py-8 text-center text-xs text-gold font-semibold flex items-center justify-center gap-2">
                             <RefreshCw size={16} className="animate-spin" /> Fetching complete customer history...
                           </div>
                         ) : customerInquiries.length === 0 ? (
@@ -1315,7 +1478,7 @@ export default function AdminDashboard() {
                   {/* Right column: Day-wise volume analytics chart */}
                   <div className="space-y-4">
                     <h3 className="text-xs uppercase tracking-wider font-bold text-slate-400 flex items-center gap-1.5">
-                      <TrendingUp size={13} className="text-indigo-600" /> Day-Wise Inquiry Volume
+                      <TrendingUp size={13} className="text-gold" /> Day-Wise Inquiry Volume
                     </h3>
 
                     <div className="p-5 bg-white border border-gray-150 rounded-2xl shadow-sm space-y-6">
@@ -1334,11 +1497,11 @@ export default function AdminDashboard() {
                               const heightPct = (day.count / maxVal) * 100;
                               return (
                                 <div key={idx} className="flex flex-col items-center flex-1 h-full justify-end group z-10">
-                                  <span className="text-[9px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-150 mb-1 bg-white border border-indigo-150 shadow-md px-1.5 py-0.5 rounded-md">
+                                  <span className="text-[9px] font-bold text-gold opacity-0 group-hover:opacity-100 transition-opacity duration-150 mb-1 bg-white border border-gold/25 shadow-md px-1.5 py-0.5 rounded-md">
                                     {day.count}
                                   </span>
                                   <div 
-                                    className="w-full bg-gradient-to-t from-indigo-500 to-indigo-600 rounded-t-md group-hover:from-indigo-600 group-hover:to-indigo-700 transition-all duration-300 relative shadow-sm"
+                                    className="w-full bg-gradient-to-t from-[#D8B85A] to-[#C9A440] rounded-t-md group-hover:from-[#C9A440] group-hover:to-[#A8862C] transition-all duration-300 relative shadow-sm"
                                     style={{ height: `${heightPct * 0.7}%`, minHeight: "6px" }}
                                   >
                                     <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-md" />
@@ -1365,7 +1528,7 @@ export default function AdminDashboard() {
                                       ? "bg-rose-50 text-rose-600 border-rose-100"
                                       : day.count > 5
                                       ? "bg-amber-50 text-amber-600 border-amber-100"
-                                      : "bg-indigo-50 text-indigo-600 border-indigo-100"
+                                      : "bg-gold/10 text-gold border-gold/25"
                                   }`}>
                                     {day.count} {day.count === 1 ? 'inquiry' : 'inquiries'}
                                     {day.count > 10 && ' 🔥'}
@@ -1402,7 +1565,7 @@ export default function AdminDashboard() {
                   <select
                     value={selectedVenueId}
                     onChange={(e) => setSelectedVenueId(e.target.value)}
-                    className="ml-2 px-3 py-1.5 text-xs bg-white border border-gray-250 rounded-xl focus:outline-none focus:border-indigo-500 font-bold text-slate-800 cursor-pointer shadow-sm"
+                    className="ml-2 px-3 py-1.5 text-xs bg-white border border-gray-250 rounded-xl focus:outline-none focus:border-gold font-bold text-slate-800 cursor-pointer shadow-sm"
                   >
                     <option value="all">All Venues</option>
                     {venuesList.map(v => (
@@ -1410,7 +1573,7 @@ export default function AdminDashboard() {
                     ))}
                   </select>
                 </div>
-                <span className="text-[11px] font-bold text-indigo-600">
+                <span className="text-[11px] font-bold text-gold">
                   {bookings.length} Booking dates locked
                 </span>
               </div>
@@ -1425,7 +1588,7 @@ export default function AdminDashboard() {
                   {selectedVenueId !== "all" && (
                     <button
                       onClick={() => setSelectedVenueId("all")}
-                      className="mt-4 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all"
+                      className="mt-4 px-4 py-2 text-xs font-bold bg-[#101828] hover:bg-[#1D2939] text-white rounded-xl shadow-sm transition-all"
                     >
                       Clear Selection Filters
                     </button>
@@ -1448,9 +1611,9 @@ export default function AdminDashboard() {
                       {bookings.map(booking => (
                         <tr 
                           key={booking.id} 
-                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-indigo-600 text-gray-700 transition-all duration-150"
+                          className="hover:bg-slate-50/60 border-l-2 border-l-transparent hover:border-l-gold text-gray-700 transition-all duration-150"
                         >
-                          <td className="p-4 font-bold text-indigo-600 text-sm">
+                          <td className="p-4 font-bold text-gold text-sm">
                             {new Date(booking.event_date).toLocaleDateString(undefined, { 
                               weekday: 'short', 
                               year: 'numeric', 
@@ -1529,7 +1692,7 @@ export default function AdminDashboard() {
                 rows={4}
                 value={rejectionModal.reason}
                 onChange={(e) => setRejectionModal(prev => ({ ...prev, reason: e.target.value }))}
-                className="w-full p-3 text-xs border border-gray-250 rounded-xl focus:outline-none focus:border-indigo-500 placeholder-gray-400 text-gray-850"
+                className="w-full p-3 text-xs border border-gray-250 rounded-xl focus:outline-none focus:border-gold placeholder-gray-400 text-gray-850"
               />
             </div>
 
@@ -1577,7 +1740,7 @@ export default function AdminDashboard() {
                   value={confirmModal.venueAmount}
                   onChange={(e) => setConfirmModal(prev => ({ ...prev, venueAmount: e.target.value }))}
                   placeholder="e.g. 75000"
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold font-semibold"
                 />
               </div>
 
@@ -1588,7 +1751,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={confirmModal.cateringAmount}
                     onChange={(e) => setConfirmModal(prev => ({ ...prev, cateringAmount: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
                 <div>
@@ -1597,7 +1760,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={confirmModal.decorationAmount}
                     onChange={(e) => setConfirmModal(prev => ({ ...prev, decorationAmount: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
               </div>
@@ -1609,7 +1772,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={confirmModal.djAmount}
                     onChange={(e) => setConfirmModal(prev => ({ ...prev, djAmount: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
                 <div>
@@ -1618,7 +1781,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={confirmModal.advancePaid}
                     onChange={(e) => setConfirmModal(prev => ({ ...prev, advancePaid: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold text-emerald-700"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold font-semibold text-emerald-700"
                   />
                 </div>
               </div>
@@ -1628,7 +1791,7 @@ export default function AdminDashboard() {
                 <select
                   value={confirmModal.session}
                   onChange={(e) => setConfirmModal(prev => ({ ...prev, session: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold bg-white"
                 >
                   <option value="full_day">Full Day</option>
                   <option value="morning">Morning (6am–12pm)</option>
@@ -1644,13 +1807,13 @@ export default function AdminDashboard() {
                   value={confirmModal.notes}
                   onChange={(e) => setConfirmModal(prev => ({ ...prev, notes: e.target.value }))}
                   placeholder="Payment reference, special instructions, custom verbal agreements..."
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                 />
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center font-bold text-sm">
                 <span>Calculated Total:</span>
-                <span className="text-indigo-600">
+                <span className="text-gold">
                   ₹{(
                     (parseFloat(confirmModal.venueAmount || "0") || 0) +
                     (parseFloat(confirmModal.cateringAmount || "0") || 0) +
@@ -1691,7 +1854,7 @@ export default function AdminDashboard() {
               <X size={18} />
             </button>
             <h3 className="font-heading font-bold text-lg text-gray-950 flex items-center gap-2">
-              <Briefcase className="text-indigo-600" size={20} /> Modify Customer Inquiry
+              <Briefcase className="text-gold" size={20} /> Modify Customer Inquiry
             </h3>
             <p className="text-xs text-gray-500 mt-1">
               Update inquiry specifications as requested by customer.
@@ -1701,12 +1864,12 @@ export default function AdminDashboard() {
               {/* Venue Selection */}
               <div>
                 <label className="font-bold text-slate-800 block mb-1 flex items-center gap-1.5">
-                  <Building size={14} className="text-indigo-600" /> Venue Selection
+                  <Building size={14} className="text-gold" /> Venue Selection
                 </label>
                 <select
                   value={editModal.venue_id}
                   onChange={(e) => setEditModal(prev => ({ ...prev, venue_id: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-semibold text-slate-900"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold bg-white font-semibold text-slate-900"
                 >
                   <option value="">-- Select Venue --</option>
                   {allVenues.map(v => (
@@ -1738,7 +1901,7 @@ export default function AdminDashboard() {
                       budget: suggestedBudget || prev.budget
                     }));
                   }}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-medium text-slate-800"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold bg-white font-medium text-slate-800"
                 >
                   <option value="">None / Remove Catering Package</option>
                   {allCateringPkgs.map(p => (
@@ -1757,7 +1920,7 @@ export default function AdminDashboard() {
                 <select
                   value={editModal.decoration_package_id}
                   onChange={(e) => setEditModal(prev => ({ ...prev, decoration_package_id: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white font-medium text-slate-800"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold bg-white font-medium text-slate-800"
                 >
                   <option value="">None / Remove Decoration Package</option>
                   {allDecorPkgs.map(p => (
@@ -1775,7 +1938,7 @@ export default function AdminDashboard() {
                     type="text"
                     value={editModal.name}
                     onChange={(e) => setEditModal(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
                 <div>
@@ -1784,7 +1947,7 @@ export default function AdminDashboard() {
                     type="text"
                     value={editModal.phone}
                     onChange={(e) => setEditModal(prev => ({ ...prev, phone: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
               </div>
@@ -1796,7 +1959,7 @@ export default function AdminDashboard() {
                     type="text"
                     value={editModal.location}
                     onChange={(e) => setEditModal(prev => ({ ...prev, location: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
                 <div>
@@ -1805,7 +1968,7 @@ export default function AdminDashboard() {
                     type="date"
                     value={editModal.event_date}
                     onChange={(e) => setEditModal(prev => ({ ...prev, event_date: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 font-semibold"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold font-semibold"
                   />
                 </div>
               </div>
@@ -1817,7 +1980,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={editModal.guest_count}
                     onChange={(e) => setEditModal(prev => ({ ...prev, guest_count: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
                 <div>
@@ -1826,7 +1989,7 @@ export default function AdminDashboard() {
                     type="number"
                     value={editModal.budget}
                     onChange={(e) => setEditModal(prev => ({ ...prev, budget: e.target.value }))}
-                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                    className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                   />
                 </div>
               </div>
@@ -1836,7 +1999,7 @@ export default function AdminDashboard() {
                 <select
                   value={editModal.status}
                   onChange={(e) => setEditModal(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500 bg-white"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold bg-white"
                 >
                   <option value="pending">Pending</option>
                   <option value="responded">Responded</option>
@@ -1851,7 +2014,7 @@ export default function AdminDashboard() {
                   rows={3}
                   value={editModal.message}
                   onChange={(e) => setEditModal(prev => ({ ...prev, message: e.target.value }))}
-                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-indigo-500"
+                  className="w-full p-2.5 border border-slate-250 rounded-xl focus:outline-none focus:border-gold"
                 />
               </div>
             </div>
@@ -1866,7 +2029,7 @@ export default function AdminDashboard() {
               <button
                 onClick={handleEditInquirySubmit}
                 disabled={submitting}
-                className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all disabled:opacity-55"
+                className="px-5 py-2 text-xs font-bold bg-[#101828] hover:bg-[#1D2939] text-white rounded-xl shadow-sm transition-all disabled:opacity-55"
               >
                 Save Inquiry Changes
               </button>

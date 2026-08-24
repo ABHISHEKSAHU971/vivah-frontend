@@ -79,7 +79,7 @@ export default function CateringPage() {
           total_reviews: 89,
           min_guests: biz?.min_guests || 50,
           specialties: formattedCuisines.length > 0 ? formattedCuisines : ["Custom Wedding Menus", "Multi-Cuisine"],
-          image: getImageUrl(biz?.logo_url || v.logo) || "https://images.unsplash.com/photo-1555244162-803834f70033?w=800&q=80",
+          image: getImageUrl(biz?.logo_url || v.cover_image || v.logo) || "https://images.unsplash.com/photo-1555244162-803834f70033?w=800&q=80",
           city: biz?.city || v.city,
           packages_count: packages.length,
           cuisines: biz?.cuisines || [],

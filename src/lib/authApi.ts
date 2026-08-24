@@ -8,6 +8,7 @@ import { api } from "./api";
 export interface SendOTPRequest {
   phone: string;
   role?: "customer" | "vendor";
+  intent?: "login" | "register";
 }
 
 export interface SendOTPResponse {
@@ -42,13 +43,36 @@ export interface VerifyOTPResponse {
 export interface VendorOnboardRequest {
   full_name: string;
   email?: string;
-  vendor_type: VendorType;
-  business_name: string;
+  /** Optional — vendors pick a category per listing, not at onboarding. */
+  vendor_type?: VendorType;
+  /** Optional when a GSTIN is supplied; the server back-fills from the registry. */
+  business_name?: string;
   description?: string;
-  city: string;
+  city?: string;
   state?: string;
   address?: string;
   gstin?: string;
+}
+
+/**
+ * Public GST-registry data used to pre-fill business setup.
+ * `email` is always null — the GST registry does not expose contact details.
+ */
+export interface GstLookupData {
+  gstin: string;
+  legal_name: string;
+  trade_name: string;
+  business_name: string;
+  address: string;
+  city: string;
+  district: string;
+  state: string;
+  pincode: string;
+  email: string | null;
+  status: string;
+  constitution: string;
+  registration_date: string;
+  nature_of_business: string[];
 }
 
 export type VendorType =
@@ -77,6 +101,8 @@ export interface VendorProfileData {
   logo: string | null;
   is_approved: boolean;
   rejection_reason: string;
+  cover_image?: string | null;
+  decoration_packages?: any[];
   catering_business?: any;
   details?: any;
   photographer_profile?: any;
@@ -166,6 +192,15 @@ export const vendorApi = {
   onboard: async (payload: VendorOnboardRequest): Promise<VendorProfileData> => {
     const { data } = await api.post("/auth/vendor/onboard/", payload);
     return unwrap<VendorProfileData>(data);
+  },
+
+  /**
+   * Verify a GSTIN against the public GST registry and get back the
+   * registered business name + address to pre-fill the setup form.
+   */
+  lookupGstin: async (gstin: string): Promise<GstLookupData> => {
+    const { data } = await api.get("/auth/vendor/gst-lookup/", { params: { gstin } });
+    return unwrap<GstLookupData>(data);
   },
 
   /**

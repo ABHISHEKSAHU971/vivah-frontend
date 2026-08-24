@@ -1,17 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { BrandMark } from "@/components/BrandMark";
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-navy text-white flex flex-col justify-between font-body" style={{ background: "var(--navy)" }}>
       {/* Small Header */}
       <header className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between w-full border-b border-white/5">
-        <Link href="/" className="flex items-center gap-0.5 select-none">
-          <span className="font-heading text-white font-semibold text-lg tracking-tight">
-            PlanMyVivah
-          </span>
-          <span className="text-gold font-bold text-lg">.</span>
+        <Link href="/" className="group flex items-center">
+          <BrandMark size="sm" tone="light" />
         </Link>
         <Link href="/" className="text-xs text-white/60 hover:text-white transition-colors">
           Exit Onboarding

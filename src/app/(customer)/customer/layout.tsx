@@ -4,6 +4,7 @@ import Link from "next/link";
 import { User, Calendar, Heart, LogOut, LayoutDashboard } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/store/store";
+import { BrandMark } from "@/components/BrandMark";
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,11 +20,8 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       {/* Sidebar navigation */}
       <aside className="w-full md:w-64 bg-zinc-900 text-white flex flex-col justify-between shrink-0 p-6">
         <div className="space-y-8">
-          <Link href="/" className="flex items-center gap-0.5 select-none">
-            <span className="font-heading text-white font-semibold text-xl tracking-tight">
-              PlanMyVivah
-            </span>
-            <span className="text-gold font-bold text-xl">.</span>
+          <Link href="/" className="group flex items-center">
+            <BrandMark size="md" tone="light" />
           </Link>
 
           <nav className="space-y-1.5">

@@ -2,24 +2,64 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import Image from "next/image";
-import { useState } from "react";
-import { Palette, Check, MessageSquare, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Check, MapPin, ArrowRight, Star, Palette, Sparkles } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
-import GatedBookingModal from "@/components/GatedBookingModal";
 import { getImageUrl } from "@/lib/api";
 
+const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=800&q=80";
+
+const STYLE_LABELS: Record<string, string> = {
+  royal: "Royal",
+  floral: "Floral",
+  minimal: "Minimal Luxury",
+  bollywood: "Bollywood",
+  traditional: "Traditional",
+  modern: "Modern Premium",
+  cultural: "Cultural",
+  outdoor: "Outdoor Garden",
+};
+
 const MOCK_DECORATORS = [
-  { id: 101, name: "Vedic Mandaps", type: "Traditional Floral Setups", price_range: "80,000 - 2,50,000", rating: "4.8", packages: ["Fairy Light Walkway", "Marigold Floral Mandap", "Haldi Jhoola Canopy"], image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&q=80", city: "Bhopal" },
-  { id: 102, name: "Luxe Designs", type: "Bollywood Stages", price_range: "1,50,000 - 5,00,000", rating: "4.9", packages: ["Mirror Stage Flooring", "Orchid & Rose Floral Wall", "Drape & Chandelier Lighting"], image: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=600&q=80", city: "Indore" },
+  {
+    id: 101,
+    name: "Vedic Mandaps",
+    type: "Traditional Floral Setups",
+    price: "80000",
+    rating: "4.8",
+    total_reviews: 112,
+    specialties: ["Fairy Light Walkway", "Marigold Floral Mandap", "Haldi Jhoola Canopy"],
+    image: FALLBACK_IMAGE,
+    city: "Bhopal",
+    packages_count: 2,
+  },
+  {
+    id: 102,
+    name: "Luxe Designs",
+    type: "Bollywood Stages",
+    price: "150000",
+    rating: "4.9",
+    total_reviews: 86,
+    specialties: ["Mirror Stage Flooring", "Orchid & Rose Floral Wall", "Drape & Chandelier Lighting"],
+    image: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80",
+    city: "Indore",
+    packages_count: 1,
+  },
 ];
 
-export default function DecorationsPage() {
-  const [success, setSuccess] = useState<number | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDecorator, setSelectedDecorator] = useState<{ id: number; name: string; decorationPackageId: number | null } | null>(null);
+function minPackagePrice(packages: any[]): number | null {
+  let minPrice = Infinity;
+  (packages || []).forEach((pkg: any) => {
+    (pkg.tiers || []).forEach((tier: any) => {
+      const price = parseFloat(tier.price);
+      if (price > 0 && price < minPrice) minPrice = price;
+    });
+  });
+  return minPrice === Infinity ? null : Math.floor(minPrice);
+}
 
+export default function DecorationsPage() {
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedDecorators"],
     queryFn: () => vendorApi.listApprovedVendors("decorator"),
@@ -27,128 +67,157 @@ export default function DecorationsPage() {
 
   const decorators = (dbVendors && dbVendors.length > 0)
     ? dbVendors.map((v) => {
-        const details = v.details || {};
-        const prices = details.tiers?.map((t: any) => parseFloat(t.price)).filter((p: number) => !isNaN(p)) || [];
-        const minPrice = prices.length > 0 ? Math.min(...prices) : 30000;
-        const priceRange = prices.length > 0 ? `Starting from ₹${minPrice.toLocaleString("en-IN")}` : "₹75,000 - 3,00,000";
-        const inclusions = details.includes && details.includes.length > 0 
-          ? details.includes 
-          : ["Mandap Decoration", "Reception Stage", "Lighting Design"];
-
+        const packages = v.decoration_packages || [];
+        const styles = [...new Set(packages.map((pkg: any) => STYLE_LABELS[pkg.style] || pkg.style).filter(Boolean))];
+        const inclusions = packages.flatMap((pkg: any) => pkg.includes || []).slice(0, 3);
+        const price = minPackagePrice(packages);
         return {
           id: v.id,
-          name: details.name || v.business_name || v.name,
-          type: "Decoration Specialist",
-          price_range: priceRange,
+          name: packages[0]?.name || v.business_name || v.name,
+          type: styles.join(" & ") || "Decoration Specialist",
+          price: price != null ? String(price) : "75000",
           rating: "4.8",
-          packages: inclusions.slice(0, 3),
-          image: v.logo || "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&q=80",
+          total_reviews: 89,
+          specialties: inclusions.length > 0 ? inclusions : styles.length > 0 ? styles : ["Mandap Decoration", "Reception Stage", "Lighting Design"],
+          image: getImageUrl(v.cover_image || packages[0]?.image || v.logo) || FALLBACK_IMAGE,
           city: v.city,
-          decorationPackageId: details.id || null,
+          packages_count: packages.length,
         };
       })
     : MOCK_DECORATORS;
 
-  const handleBookClick = (decorator: any) => {
-    setSelectedDecorator({ 
-      id: decorator.id, 
-      name: decorator.name,
-      decorationPackageId: decorator.decorationPackageId
-    });
-    setIsModalOpen(true);
-  };
-
   return (
     <>
       <Navbar />
-      <main className="flex-grow pt-24 bg-zinc-50 min-h-screen">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          
-          <div className="mb-12 text-center max-w-2xl mx-auto space-y-3">
-            <div className="w-12 h-12 rounded-full bg-gold-muted flex items-center justify-center text-gold mx-auto">
-              <Palette size={22} />
-            </div>
-            <h1 className="text-3xl font-heading font-semibold text-gray-900">Decoration Specialists</h1>
-            <p className="text-sm text-gray-500">
-              Browse customized stage, mandap, and walkway setups by professional wedding decor designers in your city.
-            </p>
+
+      <section className="relative pt-16 pb-0 overflow-hidden bg-[#0a0a0a]">
+        <div className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage: "url('https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1400&q=80')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-[#0a0a0a]" />
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 text-center">
+          <div className="inline-flex items-center gap-2 bg-gold/10 border border-gold/30 px-4 py-1.5 rounded-full text-[11px] font-semibold text-gold uppercase tracking-wider mb-6">
+            <Palette size={13} /> Premium Decoration Partners
           </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-white mb-4 leading-tight">
+            Curated Wedding<br />
+            <span className="text-gold italic">Decoration Experiences</span>
+          </h1>
+          <p className="text-sm text-white/60 max-w-xl mx-auto leading-relaxed">
+            Browse mandap, stage, and floral setups by verified decor designers — independently or alongside your venue.
+          </p>
 
+          <div className="flex flex-wrap justify-center gap-6 mt-10 text-white/70 text-xs">
+            <div className="flex items-center gap-1.5"><Check size={13} className="text-gold" /> 100% Verified Decorators</div>
+            <div className="flex items-center gap-1.5"><Check size={13} className="text-gold" /> Transparent Package Pricing</div>
+            <div className="flex items-center gap-1.5"><Check size={13} className="text-gold" /> Mandap, Stage & Lighting</div>
+            <div className="flex items-center gap-1.5"><Check size={13} className="text-gold" /> Custom Themes on Request</div>
+          </div>
+        </div>
+      </section>
+
+      <main className="bg-[#f5f3ef] min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold"></div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              {decorators.map((d) => (
-                <div key={d.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm flex flex-col h-full hover:shadow-md transition-all">
-                  <div className="relative h-56 w-full">
-                    <img
-                      src={d.image}
-                      alt={d.name}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div className="absolute top-4 left-4 bg-white/95 px-2.5 py-1 rounded text-xs font-semibold text-gray-800 shadow-sm">
-                      {d.type}
-                    </div>
-                    {d.city && (
-                      <div className="absolute top-4 right-4 bg-zinc-900/90 text-white px-2.5 py-1 rounded text-[11px] font-medium shadow-sm flex items-center gap-1">
-                        <MapPin size={10} className="text-gold" /> {d.city}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-6 flex flex-col flex-grow justify-between space-y-6">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-heading font-semibold text-xl text-gray-900">{d.name}</h3>
-                        <span className="text-sm font-bold text-gold">₹{d.price_range}</span>
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Packages Include</p>
-                        <div className="flex flex-wrap gap-2">
-                          {d.packages.map((pkg: string, idx: number) => (
-                            <span key={idx} className="bg-zinc-50 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-100 flex items-center gap-1">
-                              <Check size={10} className="text-amber-500" /> {pkg}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {success === d.id ? (
-                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-lg text-center font-semibold animate-fade-in">
-                        Inquiry Sent! Our decor coordinator will contact you.
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => handleBookClick(d)}
-                        className="w-full btn-gold py-2.5 text-xs justify-center rounded-xl cursor-pointer"
-                      >
-                        Request Consultation & Custom Quote <MessageSquare size={13} />
-                      </button>
-                    )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl overflow-hidden animate-pulse">
+                  <div className="h-52 bg-gray-200" />
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 bg-gray-200 rounded w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2" />
+                    <div className="h-10 bg-gray-100 rounded-xl mt-4" />
                   </div>
                 </div>
               ))}
             </div>
-          )}
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-6">
+                <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                  Showing {decorators.length} Decoration Partner{decorators.length !== 1 ? "s" : ""}
+                </p>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {decorators.map((decorator: any) => (
+                  <Link
+                    key={decorator.id}
+                    href={`/services/decorations/${decorator.id}`}
+                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col border border-gray-100 hover:border-gold/30 hover:-translate-y-0.5"
+                  >
+                    <div className="relative h-52 overflow-hidden bg-gray-200 shrink-0">
+                      <img
+                        src={decorator.image}
+                        alt={decorator.name}
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[10px] font-semibold px-2.5 py-1 rounded-lg max-w-[60%] truncate">
+                        {decorator.type}
+                      </div>
+                      {decorator.city && (
+                        <div className="absolute top-3 right-3 bg-gold text-black text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1">
+                          <MapPin size={9} /> {decorator.city}
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <div className="flex items-end justify-between">
+                          <h3 className="font-heading font-semibold text-white text-base leading-tight">{decorator.name}</h3>
+                          <div className="text-right shrink-0 ml-2">
+                            <p className="text-[9px] text-white/70 font-medium">Starting</p>
+                            <p className="text-gold font-bold text-sm">₹{Number(decorator.price).toLocaleString("en-IN")}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 flex flex-col flex-grow space-y-3">
+                      <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Star size={11} className="fill-amber-400 text-amber-400" />
+                          <strong className="text-gray-800">{decorator.rating}</strong>
+                          <span className="text-gray-400">({decorator.total_reviews})</span>
+                        </span>
+                        {decorator.packages_count > 0 && (
+                          <>
+                            <span className="w-px h-3 bg-gray-200" />
+                            <span className="flex items-center gap-1">
+                              <Sparkles size={10} className="text-gray-400" />
+                              {decorator.packages_count} package{decorator.packages_count > 1 ? "s" : ""}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {decorator.specialties.slice(0, 3).map((s: string, idx: number) => (
+                          <span key={idx} className="bg-amber-50 text-amber-800 text-[10px] px-2 py-0.5 rounded-full border border-amber-100 font-medium">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-auto pt-2">
+                        <div className="w-full flex items-center justify-center gap-1.5 bg-black text-white text-xs font-semibold py-2.5 rounded-xl group-hover:bg-gold group-hover:text-black transition-all duration-300">
+                          View Packages & Details <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </main>
-      <Footer />
 
-      {selectedDecorator && (
-        <GatedBookingModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onSuccess={() => setSuccess(selectedDecorator.id)}
-          vendorName={selectedDecorator.name}
-          serviceType="decorator"
-          decorationPackageId={selectedDecorator.decorationPackageId}
-        />
-      )}
+      <Footer />
     </>
   );
 }
