@@ -33,6 +33,7 @@ const MOCK_DECORATORS = [
     image: FALLBACK_IMAGE,
     city: "Bhopal",
     packages_count: 2,
+    themes_count: 2,
   },
   {
     id: 102,
@@ -45,6 +46,7 @@ const MOCK_DECORATORS = [
     image: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80",
     city: "Indore",
     packages_count: 1,
+    themes_count: 1,
   },
 ];
 
@@ -71,9 +73,10 @@ export default function DecorationsPage() {
         const styles = [...new Set(packages.map((pkg: any) => STYLE_LABELS[pkg.style] || pkg.style).filter(Boolean))];
         const inclusions = packages.flatMap((pkg: any) => pkg.includes || []).slice(0, 3);
         const price = minPackagePrice(packages);
+        const tierCount = packages.reduce((sum: number, pkg: any) => sum + (pkg.tiers?.length || 0), 0);
         return {
           id: v.id,
-          name: packages[0]?.name || v.business_name || v.name,
+          name: v.business_name || packages[0]?.name || v.name,
           type: styles.join(" & ") || "Decoration Specialist",
           price: price != null ? String(price) : "75000",
           rating: "4.8",
@@ -81,7 +84,8 @@ export default function DecorationsPage() {
           specialties: inclusions.length > 0 ? inclusions : styles.length > 0 ? styles : ["Mandap Decoration", "Reception Stage", "Lighting Design"],
           image: getImageUrl(v.cover_image || packages[0]?.image || v.logo) || FALLBACK_IMAGE,
           city: v.city,
-          packages_count: packages.length,
+          packages_count: tierCount || packages.length,
+          themes_count: packages.length,
         };
       })
     : MOCK_DECORATORS;
@@ -184,6 +188,15 @@ export default function DecorationsPage() {
                           <strong className="text-gray-800">{decorator.rating}</strong>
                           <span className="text-gray-400">({decorator.total_reviews})</span>
                         </span>
+                        {decorator.themes_count > 0 && (
+                          <>
+                            <span className="w-px h-3 bg-gray-200" />
+                            <span className="flex items-center gap-1">
+                              <Palette size={10} className="text-gray-400" />
+                              {decorator.themes_count} theme{decorator.themes_count > 1 ? "s" : ""}
+                            </span>
+                          </>
+                        )}
                         {decorator.packages_count > 0 && (
                           <>
                             <span className="w-px h-3 bg-gray-200" />

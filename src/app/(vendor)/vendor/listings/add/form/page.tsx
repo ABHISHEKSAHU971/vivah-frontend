@@ -528,17 +528,24 @@ function AddListingForm() {
         themes.forEach((theme: any, ti: number) => {
           if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
           if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
-          const pkgs = theme.tiers || [];
+          if (!theme.includes || theme.includes.length === 0) {
+            errors[`themes.${ti}.includes`] = "Add at least one common inclusion";
+          }
+          const pkgs = (theme.tiers || []).filter(
+            (pkg: any) => pkg.name?.trim() || pkg.description?.trim() || (pkg.price !== "" && pkg.price != null)
+          );
           if (pkgs.length === 0) {
             errors[`themes.${ti}.tiers`] = "Add at least one package";
           }
           pkgs.forEach((pkg: any, pi: number) => {
-            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${pi}.name`] = "Package name is required";
+            const realIndex = (theme.tiers || []).indexOf(pkg);
+            const idx = realIndex >= 0 ? realIndex : pi;
+            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${idx}.name`] = "Package name is required";
             if (!pkg.price || Number(pkg.price) <= 0) {
-              errors[`themes.${ti}.tiers.${pi}.price`] = "Price must be greater than 0";
+              errors[`themes.${ti}.tiers.${idx}.price`] = "Price must be greater than 0";
             }
             if (pkg.min_guests && pkg.max_guests && Number(pkg.min_guests) >= Number(pkg.max_guests)) {
-              errors[`themes.${ti}.tiers.${pi}.price`] = "Guests up to must be greater than guests from";
+              errors[`themes.${ti}.tiers.${idx}.price`] = "Guests up to must be greater than guests from";
             }
           });
         });
@@ -785,7 +792,7 @@ function AddListingForm() {
   };
 
   return (
-    <div className={`space-y-6 font-body mx-auto pb-12 ${type === "venue" ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className={`space-y-6 font-body mx-auto pb-12 ${type === "venue" || type === "decorator" ? "max-w-5xl" : "max-w-3xl"}`}>
       {/* Header Panel */}
       <div className="flex items-start justify-between border-b border-gray-100 pb-4 gap-4">
         <div className="flex items-center gap-3">
@@ -956,14 +963,16 @@ function AddListingForm() {
                     multiple
                     accept="image/*"
                     onChange={handleImageChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                   />
-                  <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
-                    <Upload size={18} />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-semibold text-gray-900">Upload brand image / logo</p>
-                    <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                  <div className="pointer-events-none flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
+                      <Upload size={18} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-gray-900">Click to upload brand image / logo</p>
+                      <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                    </div>
                   </div>
                 </div>
 
@@ -2323,14 +2332,16 @@ function AddListingForm() {
                 multiple
                 accept="image/*"
                 onChange={handleImageChange}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
               />
-              <div className="service-tile w-12 h-12 rounded-full">
-                <Upload size={20} />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-gray-900">Drag and drop images here</p>
-                <p className="text-xs text-gray-400 mt-0.5">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+              <div className="pointer-events-none flex flex-col items-center gap-2">
+                <div className="service-tile w-12 h-12 rounded-full">
+                  <Upload size={20} />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-900">Click to upload images</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                </div>
               </div>
             </div>
 

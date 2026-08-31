@@ -47,6 +47,7 @@ const MOCK_DECORATORS = [
     city: "Bhopal",
     state: "Madhya Pradesh",
     description: "Traditional floral mandaps, marigold walkways, and warm lighting for intimate and grand weddings.",
+    themes_count: 1,
     packages: [
       {
         id: 301,
@@ -96,7 +97,7 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
         const price = minPackagePrice(packages);
         return {
           id: v.id,
-          name: packages[0]?.name || v.business_name || v.name,
+          name: v.business_name || packages[0]?.name || v.name,
           type: styles.join(" & ") || v.vendor_type || "Decoration Specialist",
           price: price != null ? String(price) : "75000",
           rating: "4.8",
@@ -105,8 +106,9 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
           image: getImageUrl(v.cover_image || packages[0]?.image || v.logo) || FALLBACK_IMAGE,
           city: v.city,
           state: v.state || "Madhya Pradesh",
-          description: packages[0]?.description || v.description || "Premium wedding decoration services.",
+          description: v.description || packages[0]?.description || "Premium wedding decoration services.",
           packages,
+          themes_count: packages.length,
         };
       }).find((d) => d.id === decoratorId)
     : MOCK_DECORATORS.find((d) => d.id === decoratorId);
@@ -163,7 +165,11 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
                   </span>
                   <span className="w-px h-3 bg-white/30" />
                   <span className="flex items-center gap-1">
-                    <Sparkles size={11} className="text-white/50" /> {activeDecorator.packages?.length || 0} packages
+                    <Palette size={11} className="text-white/50" /> {activeDecorator.themes_count || activeDecorator.packages?.length || 0} themes
+                  </span>
+                  <span className="w-px h-3 bg-white/30" />
+                  <span className="flex items-center gap-1">
+                    <Sparkles size={11} className="text-white/50" /> {activeDecorator.packages?.reduce((n: number, p: any) => n + (p.tiers?.length || 0), 0) || 0} packages
                   </span>
                 </div>
               </div>
@@ -186,7 +192,7 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-5">
                 <div className="bg-white rounded-2xl p-4 flex flex-wrap gap-2 shadow-sm border border-gray-100">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold self-center mr-1">Includes:</span>
+                  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold self-center mr-1">Styles:</span>
                   {activeDecorator.specialties.map((s: string, i: number) => (
                     <span key={i} className="flex items-center gap-1 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full">
                       <Check size={10} className="text-emerald-500 shrink-0" /> {s}
@@ -199,13 +205,13 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
                     onClick={() => setActiveTab("packages")}
                     className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${activeTab === "packages" ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"}`}
                   >
-                    Decoration Packages
+                    🎨 Decoration Packages
                   </button>
                   <button
                     onClick={() => setActiveTab("about")}
                     className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-all ${activeTab === "about" ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"}`}
                   >
-                    About Decorator
+                    ℹ️ About Decorator
                   </button>
                 </div>
 

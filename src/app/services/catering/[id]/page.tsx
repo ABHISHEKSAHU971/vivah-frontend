@@ -12,6 +12,7 @@ import Link from "next/link";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
+import { getImageUrl } from "@/lib/api";
 
 const MOCK_CATERERS = [
   { 
@@ -125,7 +126,7 @@ export default function CatererDetailPage({ params }: { params: Promise<{ id: st
           total_reviews: 89,
           min_guests: biz?.min_guests || 50,
           specialties: formattedCuisines,
-          image: biz?.logo_url || v.logo || "https://images.unsplash.com/photo-1555244162-803834f70033?w=1200&q=80",
+          image: getImageUrl(biz?.logo_url || v.cover_image || v.logo) || "https://images.unsplash.com/photo-1555244162-803834f70033?w=1200&q=80",
           city: biz?.city || v.city,
           state: v.state || "Madhya Pradesh",
           description: biz?.description || v.description || "Premium wedding catering services.",

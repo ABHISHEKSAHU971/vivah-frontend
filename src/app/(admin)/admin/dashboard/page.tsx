@@ -23,7 +23,7 @@ import {
   Utensils,
   Palette
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 
 interface VendorProfile {
   id: number;
@@ -834,7 +834,7 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-3">
                               {vendor.logo ? (
                                 <img 
-                                  src={vendor.logo} 
+                                  src={getImageUrl(vendor.logo) || vendor.logo} 
                                   alt="Logo" 
                                   className="w-10 h-10 rounded-xl object-cover border border-gray-200 bg-gray-50"
                                 />
@@ -973,10 +973,11 @@ export default function AdminDashboard() {
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {rows.map((venue) => {
-                      const cover =
+                      const coverRaw =
                         venue.cover_image ||
                         venue.images?.find((i) => i.is_default)?.image ||
                         venue.images?.[0]?.image;
+                      const cover = coverRaw ? getImageUrl(coverRaw) || coverRaw : null;
                       const vendorName = venue.vendor?.business_name || venue.vendor_name || "Unknown vendor";
                       return (
                         <div

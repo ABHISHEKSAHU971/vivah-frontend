@@ -7,7 +7,7 @@ import {
   ArrowLeft, ArrowRight, Save, CheckCircle, Store, Music, 
   Camera, Sparkles, Utensils, Flower, Calendar, Upload, X, Loader2, AlertCircle, Check 
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 import { citiesForState } from "@/lib/indiaLocations";
 import { DecorationBuilder, emptyTheme } from "@/components/vendor/DecorationBuilder";
 
@@ -45,6 +45,32 @@ const SERVICE_POLICIES = [
   { value: "both", label: "In-House + Outside Allowed" },
 ];
 
+const VENUE_MEDIA_FOLDERS = [
+  { value: "rooms", label: "Rooms" },
+  { value: "garden", label: "Garden" },
+  { value: "hall", label: "Banquet Hall" },
+  { value: "pool", label: "Pool" },
+  { value: "dormitory", label: "Dormitory" },
+  { value: "other", label: "Other" },
+];
+
+const DECORATION_MEDIA_FOLDERS = [
+  { value: "mandap", label: "Mandap" },
+  { value: "stage", label: "Stage" },
+  { value: "entrance", label: "Entrance" },
+  { value: "lighting", label: "Lighting" },
+  { value: "floral", label: "Floral" },
+  { value: "cover", label: "Cover" },
+  { value: "other", label: "Other" },
+];
+
+interface ListingImage {
+  file?: File;
+  preview: string;
+  folder: string;
+  isDefault: boolean;
+  mediaId?: number;
+}
 
 const PHOTOGRAPHY_TYPES = ["candid", "traditional", "cinematic", "drone", "pre-wedding"];
 const MAKEUP_BRANDS = ["MAC", "Sephora", "Huda Beauty", "Kryolan", "NARS", "Fenty Beauty", "Bobbi Brown", "Estee Lauder"];
@@ -180,7 +206,8 @@ function EditListingForm() {
   const [catererTab, setCatererTab] = useState("packages"); // "profile", "menu", "packages"
 
   // Image state
-  const [images, setImages] = useState<{ preview: string }[]>([]);
+  const [images, setImages] = useState<ListingImage[]>([]);
+  const [activeMediaFolder, setActiveMediaFolder] = useState("rooms");
 
   const [masterFoodItems, setMasterFoodItems] = useState<any[]>([]);
   const [newDishCourse, setNewDishCourse] = useState("starter");
@@ -201,6 +228,11 @@ function EditListingForm() {
       .then((res) => {
         const item = res.data.data || res.data;
         setType(item.service_type);
+        if (item.service_type === "decorator") {
+          setActiveMediaFolder("mandap");
+        } else if (item.service_type === "venue") {
+          setActiveMediaFolder("rooms");
+        }
         setBaseForm({
           name: item.name || "",
           description: item.description || "",
@@ -254,6 +286,26 @@ function EditListingForm() {
         } else {
           setDetailForm(details);
         }
+
+        const mediaItems = item.media || [];
+        if (mediaItems.length > 0) {
+          setImages(
+            mediaItems.map((m: any) => ({
+              preview: getImageUrl(m.image) || m.image,
+              folder: m.folder || (item.service_type === "caterer" ? "buffet" : "general"),
+              isDefault: Boolean(m.is_default),
+              mediaId: m.id,
+            }))
+          );
+        } else if (item.image) {
+          setImages([
+            {
+              preview: getImageUrl(item.image) || item.image,
+              folder: item.service_type === "caterer" ? "logo" : "cover",
+              isDefault: true,
+            },
+          ]);
+        }
       })
       .catch((err) => {
         console.error("Fetch listing details error:", err);
@@ -298,18 +350,41 @@ function EditListingForm() {
     const files = e.target.files;
     if (!files) return;
     const nextImages = [...images];
+    const folder =
+      type === "venue" || type === "decorator"
+        ? activeMediaFolder
+        : type === "caterer"
+          ? "buffet"
+          : "general";
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       nextImages.push({
+        file,
         preview: URL.createObjectURL(file),
+        folder,
+        isDefault: nextImages.length === 0,
       });
     }
     setImages(nextImages);
+    e.target.value = "";
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
+    setImages((prev) => {
+      const removed = prev[index];
+      if (removed?.file && removed.preview.startsWith("blob:")) {
+        URL.revokeObjectURL(removed.preview);
+      }
+      const next = prev.filter((_, i) => i !== index);
+      if (removed?.isDefault && next.length > 0) {
+        next[0] = { ...next[0], isDefault: true };
+      }
+      return next;
+    });
   };
+
+  const isPackageDraft = (pkg: any) =>
+    Boolean(pkg.name?.trim() || pkg.description?.trim() || pkg.price !== "" && pkg.price != null);
 
   const validateStep = (currentStep: number) => {
     const errors: Record<string, string> = {};
@@ -394,15 +469,20 @@ function EditListingForm() {
         themes.forEach((theme: any, ti: number) => {
           if (!theme.name?.trim()) errors[`themes.${ti}.name`] = "Theme name is required";
           if (!theme.description?.trim()) errors[`themes.${ti}.description`] = "Short description is required";
-          const pkgs = theme.tiers || [];
+          if (!theme.includes || theme.includes.length === 0) {
+            errors[`themes.${ti}.includes`] = "Add at least one common inclusion";
+          }
+          const pkgs = (theme.tiers || []).filter(isPackageDraft);
           if (pkgs.length === 0) errors[`themes.${ti}.tiers`] = "Add at least one package";
           pkgs.forEach((pkg: any, pi: number) => {
-            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${pi}.name`] = "Package name is required";
+            const realIndex = (theme.tiers || []).indexOf(pkg);
+            const idx = realIndex >= 0 ? realIndex : pi;
+            if (!pkg.name?.trim()) errors[`themes.${ti}.tiers.${idx}.name`] = "Package name is required";
             if (!pkg.price || Number(pkg.price) <= 0) {
-              errors[`themes.${ti}.tiers.${pi}.price`] = "Price must be greater than 0";
+              errors[`themes.${ti}.tiers.${idx}.price`] = "Price must be greater than 0";
             }
             if (pkg.min_guests && pkg.max_guests && Number(pkg.min_guests) >= Number(pkg.max_guests)) {
-              errors[`themes.${ti}.tiers.${pi}.price`] = "Guests up to must be greater than guests from";
+              errors[`themes.${ti}.tiers.${idx}.price`] = "Guests up to must be greater than guests from";
             }
           });
         });
@@ -529,6 +609,28 @@ function EditListingForm() {
     try {
       const response = await api.patch(`/listings/${id}/`, payload);
       if (response.status === 200 || response.data.success) {
+        const newImages = images.filter((img) => img.file);
+        if (newImages.length > 0) {
+          const hasDefault = images.some((img) => img.isDefault);
+          for (let i = 0; i < newImages.length; i++) {
+            const img = newImages[i];
+            if (!img.file) continue;
+            try {
+              const formData = new FormData();
+              formData.append("image", img.file);
+              formData.append("folder", img.folder || "general");
+              formData.append(
+                "is_default",
+                img.isDefault || (!hasDefault && i === 0) ? "true" : "false"
+              );
+              await api.post(`/listings/${id}/media/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            } catch (imgErr) {
+              console.warn("Image upload failed, listing was still updated:", imgErr);
+            }
+          }
+        }
         router.push("/vendor/listings");
       } else {
         setErrorMsg("Failed to save updates. " + (response.data.message || ""));
@@ -594,7 +696,7 @@ function EditListingForm() {
   }
 
   return (
-    <div className="space-y-6 font-body max-w-3xl mx-auto pb-12">
+    <div className={`space-y-6 font-body mx-auto pb-12 ${type === "venue" || type === "decorator" ? "max-w-5xl" : "max-w-3xl"}`}>
       {/* Header Panel */}
       <div className="flex items-center justify-between border-b border-gray-100 pb-4">
         <div className="flex items-center gap-3">
@@ -629,7 +731,7 @@ function EditListingForm() {
       </div>
 
       {errorMsg && (
-        <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-xs font-semibold flex items-center gap-2 shadow-sm">
+        <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-xs font-semibold flex items-center gap-2 shadow-sm animate-pulse">
           <AlertCircle size={16} className="shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -752,14 +854,16 @@ function EditListingForm() {
                     multiple
                     accept="image/*"
                     onChange={handleImageChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                   />
-                  <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
-                    <Upload size={18} />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-semibold text-gray-900">Upload brand image / logo</p>
-                    <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                  <div className="pointer-events-none flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center border border-gold/15">
+                      <Upload size={18} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-gray-900">Click to upload brand image / logo</p>
+                      <p className="text-[9px] text-gray-400">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                    </div>
                   </div>
                 </div>
 
@@ -1937,7 +2041,7 @@ function EditListingForm() {
               onClick={handleNext}
               className="btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center gap-1.5 transition-all shadow-md"
             >
-              Configure Media <ArrowRight size={14} />
+              Continue to Media <ArrowRight size={14} />
             </button>
           </div>
         </div>
@@ -1947,13 +2051,42 @@ function EditListingForm() {
       {step === 3 && type !== "caterer" && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 font-heading">Media Showcase Upload</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Attach high-resolution photos showcasing your venue setup, wedding portfolio, makeup work, or sound stages.</p>
+            <h2 className="text-base font-semibold text-gray-900 font-heading">Photos & Media</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Add photos of your work. The one you mark as default is shown on your listing card.
+            </p>
           </div>
 
           <hr className="border-gray-100" />
 
-          {/* Image Upload Area */}
+          {(type === "venue" || type === "decorator") && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Photo folder</label>
+              <div className="flex flex-wrap gap-2">
+                {(type === "venue" ? VENUE_MEDIA_FOLDERS : DECORATION_MEDIA_FOLDERS).map((folder) => (
+                  <button
+                    key={folder.value}
+                    type="button"
+                    onClick={() => setActiveMediaFolder(folder.value)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                      activeMediaFolder === folder.value
+                        ? "bg-gold text-black border-gold"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {folder.label}
+                    <span className="ml-1 text-[10px] opacity-70">
+                      ({images.filter((img) => img.folder === folder.value).length})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Upload photos into <span className="font-semibold text-gray-700">{(type === "venue" ? VENUE_MEDIA_FOLDERS : DECORATION_MEDIA_FOLDERS).find((f) => f.value === activeMediaFolder)?.label}</span>. Files are stored as upload/GSTIN/{type === "venue" ? "venue" : "decoration"}/{activeMediaFolder}/
+              </p>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div className="border-2 border-dashed border-gray-200 hover:border-gold/50 rounded-2xl p-8 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors relative group bg-zinc-50/30">
               <input
@@ -1961,36 +2094,58 @@ function EditListingForm() {
                 multiple
                 accept="image/*"
                 onChange={handleImageChange}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
               />
-              <div className="service-tile w-12 h-12 rounded-full">
-                <Upload size={20} />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-gray-900">Drag and drop images here</p>
-                <p className="text-xs text-gray-400 mt-0.5">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+              <div className="pointer-events-none flex flex-col items-center gap-2">
+                <div className="service-tile w-12 h-12 rounded-full">
+                  <Upload size={20} />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-900">Click to upload images</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Supports JPEG, PNG, and WebP (Max 5MB each)</p>
+                </div>
               </div>
             </div>
 
-            {/* Previews Grid */}
             {images.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-                {images.map((img, idx) => (
-                  <div key={idx} className="relative h-28 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
-                    <img
-                      src={img.preview}
-                      alt={`Preview ${idx + 1}`}
-                      className="object-cover w-full h-full"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+              <div className="space-y-3 pt-2">
+                {(type === "venue" || type === "decorator") && (
+                  <p className="text-[11px] text-gray-500">
+                    Showing {activeMediaFolder} photos. Click a photo to set it as the listing cover.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {((type === "venue" || type === "decorator") ? images.filter((img) => img.folder === activeMediaFolder) : images).map((img) => {
+                    const realIdx = images.indexOf(img);
+                    return (
+                      <div key={img.mediaId ?? `new-${realIdx}`} className={`relative h-28 border rounded-xl overflow-hidden shadow-sm group ${img.isDefault ? "border-gold ring-2 ring-gold/40" : "border-gray-150"}`}>
+                        <img
+                          src={img.preview}
+                          alt={`Preview ${realIdx + 1}`}
+                          className="object-cover w-full h-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(realIdx)}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                        >
+                          <X size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImages((prev) => prev.map((item, i) => ({ ...item, isDefault: i === realIdx })));
+                          }}
+                          className={`absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-bold rounded-md py-1 ${
+                            img.isDefault ? "bg-gold text-black" : "bg-black/60 text-white hover:bg-black"
+                          }`}
+                        >
+                          {img.isDefault ? "Default cover" : "Set as default"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -2000,7 +2155,6 @@ function EditListingForm() {
             </div>
           </div>
 
-          {/* Controls */}
           <div className="flex flex-col sm:flex-row sm:justify-between items-center gap-4 pt-3 border-t border-gray-100">
             <button
               onClick={handleBack}
@@ -2017,7 +2171,7 @@ function EditListingForm() {
                 className="w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-950 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm"
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                Save as Draft
+                Save Draft
               </button>
               <button
                 type="button"
@@ -2026,7 +2180,7 @@ function EditListingForm() {
                 className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                Submit for Approval
+                Publish for Approval
               </button>
             </div>
           </div>
@@ -3201,7 +3355,7 @@ function EditListingForm() {
                 className="w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-950 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm"
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                Save as Draft
+                Save Draft
               </button>
               <button
                 type="button"
@@ -3210,7 +3364,7 @@ function EditListingForm() {
                 className="w-full sm:w-auto btn-gold rounded-xl text-xs font-bold px-6 py-3 flex items-center justify-center gap-1.5 transition-all shadow-md"
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                Submit for Approval
+                Publish for Approval
               </button>
             </div>
           </div>

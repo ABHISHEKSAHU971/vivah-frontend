@@ -63,10 +63,12 @@ api.interceptors.response.use(
 
 export const getImageUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) {
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:")) {
     return url;
   }
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  const origin = apiBase.replace(/\/api\/v1\/?$/, "");
   const cleanUrl = url.startsWith("/") ? url : `/${url}`;
-  return `http://localhost:8000${cleanUrl}`;
+  return `${origin}${cleanUrl}`;
 };
 

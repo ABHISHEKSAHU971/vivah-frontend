@@ -487,7 +487,7 @@ export function DecorationBuilder({
               </div>
             ))}
 
-            <button type="button" onClick={() => patch(ti, { tiers: [...theme.tiers, emptyPackage()] })}
+            <button type="button" onClick={() => patch(ti, { tiers: [...(theme.tiers || []), emptyPackage()] })}
               className="w-full py-2.5 rounded-xl border border-dashed border-gray-300 text-xs font-bold text-gray-600 hover:border-gold hover:text-gold transition-all inline-flex items-center justify-center gap-1.5">
               <Plus size={14} /> {theme.tiers.length ? "Add another package" : "Add your first package"}
             </button>
