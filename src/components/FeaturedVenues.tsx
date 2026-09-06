@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { MapPin, Star, Heart, ArrowRight } from "lucide-react";
+import { ArrowRight, Flame, Heart, MapPin, Star, TrendingUp, Users } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface Venue {
@@ -16,6 +16,9 @@ interface Venue {
   total_bookings: number;
   has_parking: boolean;
   is_ac: boolean;
+  min_capacity?: number;
+  max_capacity?: number;
+  primary_image?: string | null;
 }
 
 // Fallback placeholder data for when API is not reachable
@@ -43,20 +46,39 @@ function formatPrice(price: string) {
   return "₹" + n.toLocaleString("en-IN");
 }
 
-function VenueCard({ venue, index }: { venue: Venue; index: number }) {
+function VenueCard({ venue, index, rank }: { venue: Venue; index: number; rank: number }) {
   const [wishlisted, setWishlisted] = useState(false);
+
+  const bookings = venue.total_bookings || 0;
+  const rating = Number(venue.avg_rating ?? 0);
+  // Only the leaders earn a badge — a badge on every card says nothing.
+  const highlight =
+    rank === 0 && bookings > 0
+      ? { icon: Flame, label: "Most booked", tone: "bg-rose-500/90" }
+      : bookings >= 25
+        ? { icon: TrendingUp, label: `${bookings} bookings`, tone: "bg-emerald-600/90" }
+        : rating >= 4.7
+          ? { icon: Star, label: "Top rated", tone: "bg-amber-500/90" }
+          : null;
+  const HighlightIcon = highlight?.icon;
 
   return (
     <div className="venue-card group shadow-gold-hover border border-transparent">
       {/* Image */}
       <div className="relative overflow-hidden h-52">
         <Image
-          src={VENUE_IMAGES[index % VENUE_IMAGES.length]}
+          src={venue.primary_image || VENUE_IMAGES[index % VENUE_IMAGES.length]}
           alt={venue.name}
           fill
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           className="object-cover transition-transform duration-500 group-hover:scale-105"
+          unoptimized
         />
+        {highlight && HighlightIcon && (
+          <div className={`absolute bottom-3 left-3 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-white backdrop-blur-sm ${highlight.tone}`}>
+            <HighlightIcon size={10} /> {highlight.label}
+          </div>
+        )}
         {/* Badge */}
         <div
           className="absolute top-3 left-3 px-2.5 py-1 rounded text-xs font-semibold"
@@ -98,11 +120,21 @@ function VenueCard({ venue, index }: { venue: Venue; index: number }) {
         >
           {venue.name}
         </h3>
-        <div className="flex items-center gap-1.5 mb-3">
-          <MapPin size={13} style={{ color: "var(--text-lighter)" }} />
-          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-            {venue.city}, {venue.state}
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <MapPin size={13} style={{ color: "var(--text-lighter)" }} />
+            <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+              {venue.city}, {venue.state}
+            </span>
           </span>
+          {venue.max_capacity ? (
+            <span className="flex items-center gap-1.5">
+              <Users size={12} style={{ color: "var(--text-lighter)" }} />
+              <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                up to {venue.max_capacity.toLocaleString("en-IN")}
+              </span>
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center justify-between">
           <div>
@@ -139,8 +171,10 @@ export default function FeaturedVenues() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // `ordering=popular` sorts by bookings first, rating as the tie-break —
+    // the venues couples actually choose, not just the best-rated empty ones.
     api
-      .get("/venues/venues/?ordering=-avg_rating&page_size=6")
+      .get("/venues/venues/?ordering=popular&page_size=6")
       .then((res) => {
         const results = res.data?.results || res.data?.data?.results || [];
         setVenues(results.length > 0 ? results.slice(0, 6) : PLACEHOLDER_VENUES);
@@ -155,7 +189,7 @@ export default function FeaturedVenues() {
         {/* Header */}
         <div className="flex items-end justify-between mb-12">
           <div>
-            <p className="eyebrow mb-4">Featured Venues</p>
+            <p className="eyebrow mb-4">Most Booked &amp; Top Rated</p>
             <h2
               className="font-heading"
               style={{
@@ -170,6 +204,9 @@ export default function FeaturedVenues() {
               </em>{" "}
               shaadi.
             </h2>
+            <p className="text-gray-500 text-sm mt-3 max-w-md">
+              The venues couples book most on PlanMyVivah, ranked by real bookings and ratings.
+            </p>
           </div>
           <Link
             href="/venues"
@@ -198,7 +235,7 @@ export default function FeaturedVenues() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {venues.map((v, i) => (
               <Link key={v.id} href={`/venues/${v.id}`}>
-                <VenueCard venue={v} index={i} />
+                <VenueCard venue={v} index={i} rank={i} />
               </Link>
             ))}
           </div>

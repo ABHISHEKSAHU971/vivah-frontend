@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Users, Search, ChevronDown } from "lucide-react";
+import { CalendarDays, ChevronDown, MapPin, Search, Users } from "lucide-react";
+import { todayISO } from "@/lib/discovery";
 
 const GUEST_CAPACITIES = [
   "100-300 guests",
@@ -20,9 +21,13 @@ export default function HeroSection() {
   const router = useRouter();
   const [city, setCity] = useState("Bhopal");
   const [guests, setGuests] = useState("300-600 guests");
+  const [date, setDate] = useState("");
 
   const handleSearch = () => {
     const params = new URLSearchParams({ city, guests });
+    // Only venues free on the chosen date are listed — see the `date` filter
+    // in VenueRepository.
+    if (date) params.set("date", date);
     router.push(`/venues?${params.toString()}`);
   };
 
@@ -60,19 +65,6 @@ export default function HeroSection() {
       {/* Content wrapper */}
       <div className="relative z-10 max-w-5xl mx-auto px-6 w-full flex flex-col items-center text-center space-y-8 md:space-y-10">
         
-        {/* Eyebrow */}
-        <div className="flex items-center justify-center gap-3">
-          <div
-            className="h-px w-8"
-            style={{ background: "var(--gold)" }}
-          />
-          <span className="eyebrow text-xs tracking-widest">AI-Powered Wedding Planning</span>
-          <div
-            className="h-px w-8"
-            style={{ background: "var(--gold)" }}
-          />
-        </div>
-
         {/* Main Headline */}
         <h1
           className="font-heading text-white leading-tight drop-shadow-md"
@@ -93,7 +85,7 @@ export default function HeroSection() {
 
         {/* Capsule Search Console */}
         <div
-          className="flex flex-col md:flex-row gap-4 md:gap-0 rounded-2xl md:rounded-full overflow-hidden w-full max-w-4xl p-3 md:p-2 border transition-all duration-300 hover:border-gold/45 hover:shadow-[0_12px_45px_rgba(201,164,64,0.15)]"
+          className="flex flex-col md:flex-row md:items-stretch gap-4 md:gap-0 rounded-2xl md:rounded-full w-full max-w-4xl p-3 md:p-2 border transition-all duration-300 hover:border-gold/45 hover:shadow-[0_12px_45px_rgba(201,164,64,0.15)]"
           style={{
             background: "rgba(255, 255, 255, 0.88)",
             backdropFilter: "blur(20px)",
@@ -161,11 +153,35 @@ export default function HeroSection() {
             </div>
           </div>
 
+          {/* Divider */}
+          <div
+            className="w-px hidden md:block self-stretch my-2 bg-gray-200"
+          />
+
+          {/* Event Date */}
+          <div className="flex-1 flex items-center px-4 py-2 hover:bg-black/[0.02] transition-colors rounded-xl md:rounded-full">
+            <CalendarDays
+              size={18}
+              className="text-gold shrink-0 mr-3 pointer-events-none"
+            />
+            <div className="flex flex-col items-start w-full min-w-0">
+              <span className="text-[9px] font-bold text-gold tracking-widest uppercase mb-0.5">Event Date</span>
+              <input
+                type="date"
+                min={todayISO()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                aria-label="Event date"
+                className="w-full text-xs font-semibold bg-transparent border-0 outline-none cursor-pointer py-0.5 text-gray-900 [color-scheme:light]"
+              />
+            </div>
+          </div>
+
           {/* Search Button */}
           <button
             id="hero-search-btn"
             onClick={handleSearch}
-            className="btn-gold justify-center rounded-xl md:rounded-full md:px-8 py-3.5 cursor-pointer shrink-0 w-full md:w-auto active:scale-95 group/btn"
+            className="btn-gold justify-center cursor-pointer shrink-0 w-full md:w-auto active:scale-95 group/btn !rounded-xl md:!rounded-full !px-6 md:!px-9 !py-3.5 md:!py-0 md:self-stretch"
           >
             <Search size={16} className="transition-transform duration-300 group-hover/btn:scale-110" />
             Find Venues

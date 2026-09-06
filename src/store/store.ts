@@ -1,6 +1,19 @@
 import { create } from "zustand";
 import type { UserData, VendorProfileData } from "@/lib/authApi";
 
+/**
+ * Fired whenever the stored token changes in this tab. The browser's native
+ * `storage` event only fires in *other* tabs, so components that read the token
+ * straight from localStorage (see AuthMenu) need this to stay in sync.
+ */
+export const AUTH_CHANGED_EVENT = "pmv:auth-changed";
+
+function announceAuthChange() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+  }
+}
+
 interface OnboardingState {
   phone: string;
   otpVerified: boolean;
@@ -57,6 +70,7 @@ export const useStore = create<AppStore>((set) => ({
       localStorage.removeItem("refresh_token");
     }
     set({ token, userRole: role });
+    announceAuthChange();
   },
 
   setUser: (user) => set({ user }),
@@ -71,6 +85,7 @@ export const useStore = create<AppStore>((set) => ({
     document.cookie = "access_token=; path=/; max-age=0";
     document.cookie = "user_role=; path=/; max-age=0";
     set({ token: null, userRole: null, user: null, vendorProfile: null });
+    announceAuthChange();
   },
 
   setOnboardingField: (key, value) =>

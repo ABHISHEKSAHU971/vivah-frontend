@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Store, User, LogOut, Bell, Loader2, Menu, X, ChevronDown, Inbox,
+  LayoutDashboard, Store, User, LogOut, Bell, Loader2, Menu, X, ChevronDown, Inbox, CalendarOff,
 } from "lucide-react";
 import { useStore } from "@/store/store";
 import { authApi, vendorApi, type VendorStatusData } from "@/lib/authApi";
@@ -13,6 +13,7 @@ import { BrandMark } from "@/components/BrandMark";
 const NAV_ITEMS = [
   { href: "/vendor/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/vendor/listings", icon: Store, label: "My Services" },
+  { href: "/vendor/availability", icon: CalendarOff, label: "Availability" },
   { href: "/vendor/bookings", icon: Inbox, label: "Booking Requests", badge: 2 },
   { href: "/vendor/profile", icon: User, label: "Vendor Profile" },
 ];
@@ -24,6 +25,7 @@ const PAGE_META: { match: (p: string) => boolean; title: string; subtitle: strin
   { match: (p) => p.startsWith("/vendor/listings"), title: "My Services", subtitle: "Everything you offer, in one place." },
   { match: (p) => p.startsWith("/vendor/profile"), title: "Vendor Profile", subtitle: "Your business details and documents." },
   { match: (p) => p.startsWith("/vendor/bookings"), title: "Booking Requests", subtitle: "Review and respond to customer enquiries." },
+  { match: (p) => p.startsWith("/vendor/availability"), title: "Availability", subtitle: "Block the dates you can't take bookings." },
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {

@@ -2,9 +2,11 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ServiceCategoryStrip from "@/components/ServiceCategoryStrip";
+import ServiceBriefBar, { matchesCity, useServiceBrief } from "@/components/ServiceBriefBar";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Utensils, Check, MapPin, ArrowRight, Star, ChefHat, Clock, Users } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
@@ -44,13 +46,13 @@ const CUISINE_ICONS: Record<string, string> = {
   multi: "🍽️", continental: "🥗", south_indian: "🫙",
 };
 
-export default function CateringPage() {
+function CateringPageContent() {
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedCaterers"],
     queryFn: () => vendorApi.listApprovedVendors("caterer"),
   });
 
-  const caterers = (dbVendors && dbVendors.length > 0)
+  const allCaterers = (dbVendors && dbVendors.length > 0)
     ? dbVendors.map((v) => {
         const biz = v.catering_business;
         const packages = biz?.packages || [];
@@ -86,6 +88,11 @@ export default function CateringPage() {
         };
       })
     : MOCK_CATERERS;
+
+  // The discovery gate puts the couple's city in the URL — honour it here
+  // rather than showing every vendor in the country.
+  const brief = useServiceBrief();
+  const caterers = allCaterers.filter((v) => matchesCity(v.city, brief.city));
 
   return (
     <>
@@ -123,6 +130,9 @@ export default function CateringPage() {
           </div>
         </div>
       </section>
+
+      <ServiceCategoryStrip active="catering" />
+      <ServiceBriefBar basePath="/services/catering" resultCount={caterers.length} noun="caterer" />
 
       {/* ── Listing Grid ────────────────────────────────────────── */}
       <main className="bg-[#f5f3ef] min-h-screen">
@@ -240,5 +250,14 @@ export default function CateringPage() {
 
       <Footer />
     </>
+  );
+}
+
+export default function CateringPage() {
+  // useSearchParams needs a Suspense boundary in the app router.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f5f3ef]" />}>
+      <CateringPageContent />
+    </Suspense>
   );
 }

@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, ChevronDown } from "lucide-react";
+import AuthMenu from "@/components/AuthMenu";
+import { BrandMark } from "@/components/BrandMark";
 
 interface NavLink {
   label: string;
@@ -24,15 +26,83 @@ export default function Navbar() {
   const isHome = pathname === "/";
 
   const [scrolled, setScrolled] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const servicesRef = useRef<HTMLDivElement>(null);
 
   const showSolidNavbar = !isHome || scrolled;
 
+  /**
+   * Auto-hide on the way down, reveal on the way up.
+   *
+   * `refYRef` is the point the current run is measured from: the shallowest
+   * scroll reached while the bar is showing, the deepest while it's hidden.
+   * Measuring against a turning point rather than the previous frame is what
+   * makes this survive a real trackpad — frame-to-frame deltas lose slow
+   * scrolling entirely, and resetting on every direction change means jitter
+   * (down 7, up 5, down 7…) never accumulates enough to fire.
+   *
+   * State the listener needs is read through refs so it registers once and
+   * never sees a stale value.
+   */
+  const refYRef = useRef(0);
+  const menuOpenRef = useRef(false);
+  const hiddenRef = useRef(false);
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
+    menuOpenRef.current = mobileOpen || servicesOpen;
+  }, [mobileOpen, servicesOpen]);
+  useEffect(() => {
+    hiddenRef.current = hidden;
+  }, [hidden]);
+
+  useEffect(() => {
+    // Net travel, away from the last turning point, before the bar reacts.
+    const RUN = 60;
+    // Never hide above this — near the top there's no space worth reclaiming,
+    // and it's past where the homepage navbar finishes turning solid.
+    const HIDE_BELOW = 160;
+    // Always show again once back up here, whatever the run says.
+    const TOP_ZONE = 60;
+    let ticking = false;
+
+    const evaluate = () => {
+      ticking = false;
+      const y = window.scrollY;
+      setScrolled(y > 20);
+
+      // An open dropdown would slide off-screen with the bar; keep it put.
+      if (menuOpenRef.current || y <= TOP_ZONE) {
+        refYRef.current = y;
+        setHidden(false);
+        return;
+      }
+
+      if (hiddenRef.current) {
+        // Track the deepest point; reveal after RUN of upward travel from it.
+        if (y > refYRef.current) refYRef.current = y;
+        if (refYRef.current - y > RUN) {
+          refYRef.current = y;
+          setHidden(false);
+        }
+      } else {
+        // Track the shallowest point; hide after RUN of downward travel from it.
+        if (y < refYRef.current) refYRef.current = y;
+        if (y - refYRef.current > RUN && y > HIDE_BELOW) {
+          refYRef.current = y;
+          setHidden(true);
+        }
+      }
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(evaluate);
+    };
+
+    refYRef.current = window.scrollY;
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
@@ -49,63 +119,41 @@ export default function Navbar() {
 
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+      // Keyboard users can tab into the bar while it's off-screen; bring it
+      // back rather than moving focus somewhere invisible.
+      onFocusCapture={() => setHidden(false)}
+      className="fixed top-0 left-0 right-0 z-50"
       style={{
-        background: showSolidNavbar
-          ? "rgba(255, 255, 255, 0.96)"
-          : "transparent",
-        backdropFilter: showSolidNavbar ? "blur(12px)" : "none",
+        background: showSolidNavbar ? "rgba(255, 255, 255, 0.96)" : "transparent",
+        // Blur only while actually on screen. A translated-away element that
+        // still carries backdrop-filter can keep sampling and painting its
+        // backdrop at the top of the viewport in Chrome — which looks exactly
+        // like a navbar stuck half-way.
+        backdropFilter: showSolidNavbar && !hidden ? "blur(12px)" : "none",
+        WebkitBackdropFilter: showSolidNavbar && !hidden ? "blur(12px)" : "none",
         borderBottom: showSolidNavbar ? "1px solid rgba(201, 164, 64, 0.12)" : "none",
+
+        transform: hidden ? "translateY(-100%)" : "translateY(0)",
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? "none" : "auto",
+        // `visibility` flips only once the slide has finished (hiding) and
+        // immediately on the way back (showing). Once hidden the browser cannot
+        // paint the bar at all, so no compositing quirk can leave a band behind.
+        visibility: hidden ? "hidden" : "visible",
+        // Transition transform/opacity explicitly rather than `all`: animating
+        // background and backdrop-filter alongside them is what made the slide
+        // muddy and interruptible.
+        transition: hidden
+          ? "transform 200ms ease-out, opacity 160ms ease-out, visibility 0s linear 200ms"
+          : "transform 200ms ease-out, opacity 160ms ease-out, visibility 0s",
+        willChange: "transform",
       }}
     >
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 select-none group">
-          <svg
-            width="34"
-            height="34"
-            viewBox="0 0 100 100"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="shrink-0 transition-transform duration-500 group-hover:rotate-12"
-          >
-            <defs>
-              <linearGradient id="navbar-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#F2D07C" />
-                <stop offset="50%" stopColor="#C9A440" />
-                <stop offset="100%" stopColor="#9C7721" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M50 15 C35 30, 20 45, 20 60 C20 76.5, 33.5 90, 50 90 C66.5 90, 80 76.5, 80 60 C80 45, 65 30, 50 15 Z"
-              stroke="url(#navbar-gold-grad)"
-              strokeWidth="5"
-              fill="none"
-            />
-            <path
-              d="M50 30 C40 42, 32 55, 32 65 C32 75, 40 82, 50 82 C60 82, 68 75, 68 65 C68 55, 60 42, 50 30 Z"
-              stroke="url(#navbar-gold-grad)"
-              strokeWidth="3.5"
-              fill="none"
-              opacity="0.85"
-            />
-            <path
-              d="M50 45 C45 52, 40 60, 40 67 C40 73, 44 76, 50 76 C56 76, 60 73, 60 67 C60 60, 55 52, 50 45 Z"
-              fill="url(#navbar-gold-grad)"
-              opacity="0.9"
-            />
-            <circle cx="50" cy="62" r="3.5" fill={showSolidNavbar ? "var(--text-dark)" : "var(--white)"} className="transition-colors duration-300" />
-          </svg>
-          <span
-            className="font-heading font-semibold tracking-tight transition-colors duration-300"
-            style={{ 
-              fontSize: "1.35rem",
-              color: showSolidNavbar ? "var(--text-dark)" : "var(--white)" 
-            }}
-          >
-            PlanMy<span style={{ color: "var(--gold)" }}>Vivah</span>
-          </span>
+        <Link href="/" className="inline-flex select-none group">
+          <BrandMark size="md" tone={showSolidNavbar ? "dark" : "light"} />
         </Link>
 
         {/* Desktop Nav */}
@@ -199,17 +247,23 @@ export default function Navbar() {
               </span>
             )
           )}
+
+          {/* Signed-in name, or a Log in button */}
+          <AuthMenu onDark={!showSolidNavbar} />
         </div>
 
-        {/* Mobile Toggle */}
-        <button
-          className="md:hidden cursor-pointer"
-          style={{ color: showSolidNavbar ? "var(--text-dark)" : "var(--white)" }}
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle Navigation Menu"
-        >
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        {/* Mobile: auth chip stays visible next to the hamburger */}
+        <div className="flex md:hidden items-center gap-3">
+          <AuthMenu onDark={!showSolidNavbar} />
+          <button
+            className="cursor-pointer"
+            style={{ color: showSolidNavbar ? "var(--text-dark)" : "var(--white)" }}
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu */}

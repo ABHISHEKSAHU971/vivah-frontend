@@ -1,7 +1,10 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
+import { Suspense } from "react";
 import Footer from "@/components/Footer";
+import ServiceCategoryStrip from "@/components/ServiceCategoryStrip";
+import ServiceBriefBar, { matchesCity, useServiceBrief } from "@/components/ServiceBriefBar";
 import Link from "next/link";
 import { Check, MapPin, ArrowRight, Star, Palette, Sparkles } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
@@ -61,13 +64,13 @@ function minPackagePrice(packages: any[]): number | null {
   return minPrice === Infinity ? null : Math.floor(minPrice);
 }
 
-export default function DecorationsPage() {
+function DecorationsPageContent() {
   const { data: dbVendors, isLoading } = useQuery({
     queryKey: ["approvedDecorators"],
     queryFn: () => vendorApi.listApprovedVendors("decorator"),
   });
 
-  const decorators = (dbVendors && dbVendors.length > 0)
+  const allDecorators = (dbVendors && dbVendors.length > 0)
     ? dbVendors.map((v) => {
         const packages = v.decoration_packages || [];
         const styles = [...new Set(packages.map((pkg: any) => STYLE_LABELS[pkg.style] || pkg.style).filter(Boolean))];
@@ -89,6 +92,11 @@ export default function DecorationsPage() {
         };
       })
     : MOCK_DECORATORS;
+
+  // The discovery gate puts the couple's city in the URL — honour it here
+  // rather than showing every vendor in the country.
+  const brief = useServiceBrief();
+  const decorators = allDecorators.filter((v) => matchesCity(v.city, brief.city));
 
   return (
     <>
@@ -124,6 +132,9 @@ export default function DecorationsPage() {
           </div>
         </div>
       </section>
+
+      <ServiceCategoryStrip active="decorations" />
+      <ServiceBriefBar basePath="/services/decorations" resultCount={decorators.length} noun="decorator" />
 
       <main className="bg-[#f5f3ef] min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -232,5 +243,14 @@ export default function DecorationsPage() {
 
       <Footer />
     </>
+  );
+}
+
+export default function DecorationsPage() {
+  // useSearchParams needs a Suspense boundary in the app router.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f5f3ef]" />}>
+      <DecorationsPageContent />
+    </Suspense>
   );
 }

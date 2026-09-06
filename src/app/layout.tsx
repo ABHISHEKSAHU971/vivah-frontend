@@ -16,6 +16,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "PlanMyVivah - India's Premier Wedding Planning Platform",
   description: "Plan your perfect shaadi. Discover verified venues, curated catering, and signature decoration partners across India with our AI-powered planning tools.",
+  // src/app/icon.png is picked up automatically as the favicon; this covers
+  // link previews and the mobile home-screen icon.
+  openGraph: {
+    title: "PlanMyVivah - India's Premier Wedding Planning Platform",
+    images: ["/logo-bow.webp"],
+  },
 };
 
 export default function RootLayout({

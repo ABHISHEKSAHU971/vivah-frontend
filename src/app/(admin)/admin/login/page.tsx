@@ -45,7 +45,7 @@ export default function AdminLogin() {
       <div className="max-w-sm w-full console-card rounded-2xl p-6 md:p-8 space-y-6">
         
         <div className="text-center space-y-2">
-          <BrandMark size="lg" tone="dark" className="justify-center" />
+          <BrandMark variant="full" size="sm" tone="dark" />
           <h1 className="text-lg font-semibold text-[#101828] pt-1">Admin Panel</h1>
           <p className="text-xs text-[#667085]">Sign in to access platform controls</p>
         </div>

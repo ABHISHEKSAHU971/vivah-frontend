@@ -754,3 +754,15 @@ select.field-light {
   font-family: var(--font-heading);
   letter-spacing: -0.01em;
 }
+
+/*
+ * Horizontal rails (category strips, photo-type filters) scroll on touch but
+ * shouldn't show a scrollbar cutting through the row.
+ */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

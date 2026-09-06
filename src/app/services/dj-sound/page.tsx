@@ -2,8 +2,10 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ServiceCategoryStrip from "@/components/ServiceCategoryStrip";
+import ServiceBriefBar, { matchesCity, useServiceBrief } from "@/components/ServiceBriefBar";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Music, Check, MessageSquare, MapPin } from "lucide-react";
 import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +18,7 @@ const MOCK_DJS = [
   { id: 102, name: "Soundwave Entertainment", type: "Sangeet Special DJ & Dhol", price: "60,000", rating: "4.9", gear: ["RCF Sound System", "Punjabi Dhol Artists", "Laser & Truss Setup"], image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80", city: "Bhopal" },
 ];
 
-export default function DjSoundPage() {
+function DjSoundPageContent() {
   const [success, setSuccess] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDj, setSelectedDj] = useState<{ id: number; name: string } | null>(null);
@@ -26,7 +28,7 @@ export default function DjSoundPage() {
     queryFn: () => vendorApi.listApprovedVendors("dj"),
   });
 
-  const djs = (dbVendors && dbVendors.length > 0)
+  const allDjs = (dbVendors && dbVendors.length > 0)
     ? dbVendors.map((v) => ({
         id: v.id,
         name: v.business_name,
@@ -41,6 +43,11 @@ export default function DjSoundPage() {
       }))
     : MOCK_DJS;
 
+  // The discovery gate puts the couple's city in the URL — honour it here
+  // rather than showing every vendor in the country.
+  const brief = useServiceBrief();
+  const djs = allDjs.filter((v) => matchesCity(v.city, brief.city));
+
   const handleBookClick = (dj: any) => {
     setSelectedDj({ id: dj.id, name: dj.name });
     setIsModalOpen(true);
@@ -49,7 +56,11 @@ export default function DjSoundPage() {
   return (
     <>
       <Navbar />
-      <main className="flex-grow pt-24 bg-zinc-50 min-h-screen">
+      <div className="pt-16">
+        <ServiceCategoryStrip active="dj-sound" />
+        <ServiceBriefBar basePath="/services/dj-sound" resultCount={djs.length} noun="DJ" />
+      </div>
+      <main className="flex-grow pt-6 bg-zinc-50 min-h-screen">
         <div className="max-w-7xl mx-auto px-6 py-8">
           
           <div className="mb-12 text-center max-w-2xl mx-auto space-y-3">
@@ -137,5 +148,14 @@ export default function DjSoundPage() {
         />
       )}
     </>
+  );
+}
+
+export default function DjSoundPage() {
+  // useSearchParams needs a Suspense boundary in the app router.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f5f3ef]" />}>
+      <DjSoundPageContent />
+    </Suspense>
   );
 }
