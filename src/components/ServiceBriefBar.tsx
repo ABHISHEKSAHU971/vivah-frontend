@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, MapPin, Users, X } from "lucide-react";
+import { CalendarDays, MapPin, Music, Palette, Users, X } from "lucide-react";
 import { CITIES_BY_STATE } from "@/lib/indiaLocations";
-import { todayISO } from "@/lib/discovery";
+import { decorationStyleLabel, djTierLabel, todayISO } from "@/lib/discovery";
 
 const CITIES = Array.from(new Set(Object.values(CITIES_BY_STATE).flat())).sort();
 
@@ -11,6 +11,10 @@ export interface ServiceBrief {
   city: string;
   date: string;
   guests: string;
+  /** Decoration listings. */
+  style: string;
+  /** DJ listings. */
+  tier: string;
 }
 
 /** Read the brief the discovery gate put in the URL. */
@@ -20,6 +24,8 @@ export function useServiceBrief(): ServiceBrief {
     city: params.get("city") || "",
     date: params.get("date") || "",
     guests: params.get("guests") || "",
+    style: params.get("style") || "",
+    tier: params.get("tier") || "",
   };
 }
 
@@ -55,7 +61,15 @@ export default function ServiceBriefBar({
     router.push(next.toString() ? `${basePath}?${next}` : basePath);
   };
 
-  const hasBrief = !!(brief.city || brief.date || brief.guests);
+  const refinement = brief.style
+    ? { key: "style", icon: Palette, label: decorationStyleLabel(brief.style) }
+    : brief.tier
+      ? { key: "tier", icon: Music, label: `${djTierLabel(brief.tier)} setup` }
+      : brief.guests
+        ? { key: "guests", icon: Users, label: `${brief.guests} guests` }
+        : null;
+
+  const hasBrief = !!(brief.city || brief.date || refinement);
 
   return (
     <div className="bg-white border-b border-gray-200">
@@ -87,14 +101,15 @@ export default function ServiceBriefBar({
           />
         </label>
 
-        {brief.guests && (
+        {/* Only one refinement applies per service: guests, theme, or setup. */}
+        {refinement && (
           <>
             <span className="w-px h-4 bg-gray-200" />
             <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-800">
-              <Users size={13} className="text-gold" /> {brief.guests} guests
+              <refinement.icon size={13} className="text-gold" /> {refinement.label}
               <button
-                onClick={() => update("guests", "")}
-                aria-label="Clear guest count"
+                onClick={() => update(refinement.key, "")}
+                aria-label={`Clear ${refinement.key}`}
                 className="text-gray-400 hover:text-gray-700"
               >
                 <X size={11} />

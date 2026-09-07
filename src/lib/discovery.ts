@@ -9,6 +9,51 @@ export interface DiscoveryBrief {
   /** ISO YYYY-MM-DD. Empty when the couple has not fixed a date yet. */
   date: string;
   guests: number;
+  /**
+   * Decoration only, and always optional — a couple browsing for decor is
+   * usually still deciding the look, and a head count tells a decorator
+   * nothing useful. Empty means "show me every style".
+   */
+  theme?: string;
+  /**
+   * DJ only, and always optional — the setup level they're after, which is
+   * what separates one DJ package from another. Empty means "show me all".
+   */
+  tier?: string;
+}
+
+/** Mirrors DecorationPackage.STYLE_CHOICES on the backend. */
+export const DECORATION_STYLES: { value: string; label: string }[] = [
+  { value: "traditional", label: "Traditional" },
+  { value: "royal", label: "Royal" },
+  { value: "floral", label: "Floral" },
+  { value: "modern", label: "Modern" },
+  { value: "minimal", label: "Minimal Luxury" },
+  { value: "contemporary", label: "Contemporary" },
+  { value: "bollywood", label: "Bollywood" },
+  { value: "cultural", label: "Cultural" },
+  { value: "rustic", label: "Rustic" },
+  { value: "outdoor", label: "Outdoor Garden" },
+  { value: "custom", label: "Custom" },
+];
+
+export function decorationStyleLabel(value: string): string {
+  return DECORATION_STYLES.find((s) => s.value === value)?.label || value;
+}
+
+/**
+ * DJPackage.TIER_CHOICES, relabelled as a setup ladder. The stored codes read
+ * low/medium/average/high, which isn't an obvious ordering for a customer.
+ */
+export const DJ_TIERS: { value: string; label: string; hint: string }[] = [
+  { value: "low", label: "Essential", hint: "Sound system and a DJ for the evening" },
+  { value: "medium", label: "Standard", hint: "Sound, basic lighting, and a compere" },
+  { value: "average", label: "Premium", hint: "Full lighting rig, effects, and dhol" },
+  { value: "high", label: "Luxury", hint: "Line array, LED walls, lasers, live acts" },
+];
+
+export function djTierLabel(value: string): string {
+  return DJ_TIERS.find((t) => t.value === value)?.label || value;
 }
 
 interface DiscoveryTarget {
@@ -54,9 +99,17 @@ export function briefToListingUrl(kind: DiscoveryKind, brief: DiscoveryBrief): s
   const params = new URLSearchParams();
   if (brief.city) params.set("city", brief.city);
   if (brief.date) params.set("date", brief.date);
-  if (brief.guests) {
+
+  if (kind === "decoration") {
+    // Decorators are matched on style, not head count.
+    if (brief.theme) params.set("style", brief.theme);
+  } else if (kind === "dj") {
+    // DJs are matched on setup level, not head count.
+    if (brief.tier) params.set("tier", brief.tier);
+  } else if (brief.guests) {
     params.set("guests", kind === "venue" ? guestRangeLabel(brief.guests) : String(brief.guests));
   }
+
   const query = params.toString();
   return query ? `${DISCOVERY_TARGETS[kind].path}?${query}` : DISCOVERY_TARGETS[kind].path;
 }

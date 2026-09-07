@@ -103,6 +103,7 @@ export interface VendorProfileData {
   rejection_reason: string;
   cover_image?: string | null;
   decoration_packages?: any[];
+  dj_packages?: any[];
   catering_business?: any;
   details?: any;
   photographer_profile?: any;

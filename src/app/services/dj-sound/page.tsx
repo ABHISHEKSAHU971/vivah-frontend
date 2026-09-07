@@ -40,13 +40,19 @@ function DjSoundPageContent() {
           : ["JBL Professional Audio", "LED Intelligent Lighting", "Live DJ Setup"],
         image: getImageUrl(v.logo) || "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80",
         city: v.city,
+        tierCodes: (v.dj_packages || []).map((pkg: any) => pkg.tier).filter(Boolean) as string[],
       }))
     : MOCK_DJS;
 
   // The discovery gate puts the couple's city in the URL — honour it here
   // rather than showing every vendor in the country.
   const brief = useServiceBrief();
-  const djs = allDjs.filter((v) => matchesCity(v.city, brief.city));
+  const djs = allDjs.filter(
+    (v) =>
+      matchesCity(v.city, brief.city) &&
+      // Setup level is optional — with none chosen, every DJ shows.
+      (!brief.tier || ((v as { tierCodes?: string[] }).tierCodes ?? []).includes(brief.tier)),
+  );
 
   const handleBookClick = (dj: any) => {
     setSelectedDj({ id: dj.id, name: dj.name });

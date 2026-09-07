@@ -89,6 +89,7 @@ function DecorationsPageContent() {
           city: v.city,
           packages_count: tierCount || packages.length,
           themes_count: packages.length,
+          styleCodes: packages.map((pkg: any) => pkg.style).filter(Boolean) as string[],
         };
       })
     : MOCK_DECORATORS;
@@ -96,7 +97,13 @@ function DecorationsPageContent() {
   // The discovery gate puts the couple's city in the URL — honour it here
   // rather than showing every vendor in the country.
   const brief = useServiceBrief();
-  const decorators = allDecorators.filter((v) => matchesCity(v.city, brief.city));
+  const decorators = allDecorators.filter(
+    (v) =>
+      matchesCity(v.city, brief.city) &&
+      // Theme is optional — with none chosen, every decorator shows.
+      (!brief.style ||
+        ((v as { styleCodes?: string[] }).styleCodes ?? []).includes(brief.style)),
+  );
 
   return (
     <>

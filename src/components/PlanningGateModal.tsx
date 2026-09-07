@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight, CalendarDays, Check, ChevronLeft, Loader2, Lock, MapPin,
-  Smartphone, User, Users, X,
+  Palette, Smartphone, User, Users, X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useStore } from "@/store/store";
 import { CITIES_BY_STATE } from "@/lib/indiaLocations";
 import {
-  DISCOVERY_TARGETS, briefToListingUrl, normalisePhone, todayISO,
+  DECORATION_STYLES, DISCOVERY_TARGETS, DJ_TIERS, briefToListingUrl,
+  normalisePhone, todayISO,
   type DiscoveryBrief, type DiscoveryKind,
 } from "@/lib/discovery";
 
@@ -108,6 +109,8 @@ function GateDialog({
     city: initialBrief?.city || "Bhopal",
     date: initialBrief?.date || "",
     guests: initialBrief?.guests || 300,
+    theme: initialBrief?.theme || "",
+    tier: initialBrief?.tier || "",
   });
 
   // Close on Escape, and lock background scroll while open.
@@ -403,38 +406,101 @@ function GateDialog({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-                  How many guests?
-                </label>
-                <div className="relative">
-                  <Users size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gold pointer-events-none" />
-                  <input
-                    type="number"
-                    min={10}
-                    max={10000}
-                    value={brief.guests || ""}
-                    onChange={(e) => setBrief({ ...brief, guests: Number(e.target.value) })}
-                    className="w-full pl-9 pr-3 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none focus:border-gold focus:bg-white transition-colors"
-                  />
+              {/*
+                The third question depends on the service. A head count drives
+                venue capacity and per-plate catering, but tells a decorator or
+                a DJ nothing — they're chosen on style and setup level, and both
+                are optional because a couple is usually still deciding.
+              */}
+              {kind === "decoration" ? (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                    Theme <span className="font-medium normal-case tracking-normal text-gray-400">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <Palette size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gold pointer-events-none" />
+                    <select
+                      value={brief.theme || ""}
+                      onChange={(e) => setBrief({ ...brief, theme: e.target.value })}
+                      className="w-full pl-9 pr-8 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none focus:border-gold focus:bg-white appearance-none cursor-pointer transition-colors"
+                    >
+                      <option value="">Any theme — show me everything</option>
+                      {DECORATION_STYLES.map((s) => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Not sure yet? Leave it — you can browse every style.
+                  </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {GUEST_PRESETS.map((g) => (
+              ) : kind === "dj" ? (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                    Setup level <span className="font-medium normal-case tracking-normal text-gray-400">(optional)</span>
+                  </label>
+                  <div className="grid grid-cols-1 gap-1.5">
                     <button
-                      key={g}
                       type="button"
-                      onClick={() => setBrief({ ...brief, guests: g })}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
-                        brief.guests === g
-                          ? "bg-[#050D1A] text-white border-[#050D1A]"
-                          : "bg-white text-gray-500 border-gray-200 hover:border-gold/50 hover:text-gray-900"
+                      onClick={() => setBrief({ ...brief, tier: "" })}
+                      className={`text-left px-3 py-2 rounded-xl border transition-all ${
+                        !brief.tier ? "border-gold bg-gold/5 shadow-sm" : "border-gray-200 hover:border-gray-300"
                       }`}
                     >
-                      {g.toLocaleString("en-IN")}
+                      <span className="block text-[11px] font-semibold text-gray-900">Any setup</span>
+                      <span className="block text-[10px] text-gray-400">Show me everything</span>
                     </button>
-                  ))}
+                    {DJ_TIERS.map((t) => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setBrief({ ...brief, tier: t.value })}
+                        className={`text-left px-3 py-2 rounded-xl border transition-all ${
+                          brief.tier === t.value
+                            ? "border-gold bg-gold/5 shadow-sm"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <span className="block text-[11px] font-semibold text-gray-900">{t.label}</span>
+                        <span className="block text-[10px] text-gray-400">{t.hint}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                    How many guests?
+                  </label>
+                  <div className="relative">
+                    <Users size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gold pointer-events-none" />
+                    <input
+                      type="number"
+                      min={10}
+                      max={10000}
+                      value={brief.guests || ""}
+                      onChange={(e) => setBrief({ ...brief, guests: Number(e.target.value) })}
+                      className="w-full pl-9 pr-3 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none focus:border-gold focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {GUEST_PRESETS.map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setBrief({ ...brief, guests: g })}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                          brief.guests === g
+                            ? "bg-[#050D1A] text-white border-[#050D1A]"
+                            : "bg-white text-gray-500 border-gray-200 hover:border-gold/50 hover:text-gray-900"
+                        }`}
+                      >
+                        {g.toLocaleString("en-IN")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
