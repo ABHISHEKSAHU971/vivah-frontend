@@ -631,6 +631,18 @@ function EditListingForm() {
             }
           }
         }
+        // Persist cover when the default is an already-uploaded photo.
+        const defaultExisting = images.find((img) => img.isDefault && img.mediaId && !img.file);
+        if (defaultExisting?.mediaId) {
+          try {
+            await api.patch(`/listings/${id}/media/`, {
+              media_id: defaultExisting.mediaId,
+              is_default: true,
+            });
+          } catch (coverErr) {
+            console.warn("Default cover update failed:", coverErr);
+          }
+        }
         router.push("/vendor/listings");
       } else {
         setErrorMsg("Failed to save updates. " + (response.data.message || ""));
@@ -868,23 +880,48 @@ function EditListingForm() {
                 </div>
 
                 {images.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-                    {images.map((img, idx) => (
-                      <div key={idx} className="relative h-24 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
-                        <img
-                          src={img.preview}
-                          alt={`Preview ${idx + 1}`}
-                          className="object-cover w-full h-full"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(idx)}
-                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                  <div className="space-y-3 pt-2">
+                    <p className="text-[11px] text-gray-500">
+                      Click a photo to set it as the listing cover / default brand image.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {images.map((img, idx) => (
+                        <div
+                          key={img.mediaId ?? `new-${idx}`}
+                          className={`relative h-28 border rounded-xl overflow-hidden shadow-sm group ${
+                            img.isDefault ? "border-gold ring-2 ring-gold/40" : "border-gray-150"
+                          }`}
                         >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
+                          <img
+                            src={img.preview}
+                            alt={`Preview ${idx + 1}`}
+                            className="object-cover w-full h-full"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(idx)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImages((prev) =>
+                                prev.map((item, i) => ({ ...item, isDefault: i === idx }))
+                              );
+                            }}
+                            className={`absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-bold rounded-md py-1 ${
+                              img.isDefault
+                                ? "bg-gold text-black"
+                                : "bg-black/60 text-white hover:bg-black"
+                            }`}
+                          >
+                            {img.isDefault ? "Default cover" : "Set as default"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

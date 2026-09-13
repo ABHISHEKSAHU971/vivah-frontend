@@ -407,7 +407,17 @@ function AddListingForm() {
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
+    setImages((prev) => {
+      const removed = prev[index];
+      if (removed?.file && removed.preview.startsWith("blob:")) {
+        URL.revokeObjectURL(removed.preview);
+      }
+      const next = prev.filter((_, i) => i !== index);
+      if (removed?.isDefault && next.length > 0 && !next.some((img) => img.isDefault)) {
+        next[0] = { ...next[0], isDefault: true };
+      }
+      return next;
+    });
   };
 
   const validateStep = (currentStep: number) => {
@@ -977,23 +987,48 @@ function AddListingForm() {
                 </div>
 
                 {images.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-                    {images.map((img, idx) => (
-                      <div key={idx} className="relative h-24 border border-gray-150 rounded-xl overflow-hidden shadow-sm group">
-                        <img
-                          src={img.preview}
-                          alt={`Preview ${idx + 1}`}
-                          className="object-cover w-full h-full"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(idx)}
-                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                  <div className="space-y-3 pt-2">
+                    <p className="text-[11px] text-gray-500">
+                      Click a photo to set it as the listing cover / default brand image.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {images.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className={`relative h-28 border rounded-xl overflow-hidden shadow-sm group ${
+                            img.isDefault ? "border-gold ring-2 ring-gold/40" : "border-gray-150"
+                          }`}
                         >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
+                          <img
+                            src={img.preview}
+                            alt={`Preview ${idx + 1}`}
+                            className="object-cover w-full h-full"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(idx)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImages((prev) =>
+                                prev.map((item, i) => ({ ...item, isDefault: i === idx }))
+                              );
+                            }}
+                            className={`absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-bold rounded-md py-1 ${
+                              img.isDefault
+                                ? "bg-gold text-black"
+                                : "bg-black/60 text-white hover:bg-black"
+                            }`}
+                          >
+                            {img.isDefault ? "Default cover" : "Set as default"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
