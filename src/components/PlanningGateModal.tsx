@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight, CalendarDays, Check, ChevronLeft, Loader2, Lock, MapPin,
@@ -99,6 +100,8 @@ function GateDialog({
   const loginOnly = mode === "login";
   const [phone, setPhone] = useState(() => normalisePhone(storeUser?.phone || ""));
   const [fullName, setFullName] = useState(storeUser?.full_name || "");
+  const [isNewUser, setIsNewUser] = useState(true);
+  const [knownName, setKnownName] = useState<string | null>(null);
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,8 +141,15 @@ function GateDialog({
     setBusy(true);
     setError("");
     try {
-      const { data } = await api.post("/auth/otp/send/", { phone });
-      setDevOtp(data?.data?.dev_otp ?? null);
+      const { data } = await api.post("/auth/otp/send/", { phone, role: "customer" });
+      const payload = data?.data ?? data;
+      const returning = payload?.is_new_user === false;
+      const existingName = (payload?.full_name || "").trim() || null;
+      setIsNewUser(!returning);
+      setKnownName(existingName);
+      if (existingName) setFullName(existingName);
+      else if (!returning) setFullName("");
+      setDevOtp(payload?.dev_otp ?? null);
       setStep("otp");
       setTimeout(() => otpRefs.current[0]?.focus(), 60);
     } catch (err) {
@@ -154,7 +164,8 @@ function GateDialog({
       setError("Enter the 4-digit code we sent you.");
       return;
     }
-    if (!fullName.trim()) {
+    // First-time (or nameless) accounts must provide a name.
+    if ((isNewUser || !knownName) && !fullName.trim()) {
       setError("Please tell us your name.");
       return;
     }
@@ -164,7 +175,7 @@ function GateDialog({
       const { data } = await api.post("/auth/otp/verify/", {
         phone,
         otp_code: otpValue,
-        full_name: fullName.trim(),
+        ...(fullName.trim() ? { full_name: fullName.trim() } : {}),
       });
       const payload = data?.data ?? data;
       if (payload?.access) {
@@ -179,6 +190,9 @@ function GateDialog({
       setOnboardingField("phone", phone);
       setOnboardingField("otpVerified", true);
       if (loginOnly) {
+        // Callers like the hero search pass onComplete to continue with filters
+        // after authentication — without forcing the brief step again.
+        if (onComplete) onComplete(brief);
         onClose();
         return;
       }
@@ -225,30 +239,34 @@ function GateDialog({
   const totalSteps = loginOnly ? 2 : signedIn ? 1 : 3;
   const shownStep = totalSteps === 1 ? 1 : stepMeta.n;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+  // Portal to body so Navbar's transform doesn't trap `position: fixed`
+  // and shove the dialog against the top of the viewport.
+  const modal = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-[#050D1A]/70 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-[#050D1A]/55 backdrop-blur-md animate-fade-in"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title || target.label}
-        className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+        className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[min(92vh,720px)] flex flex-col animate-fade-in-scale"
       >
         {/* ── Header ─────────────────────────────────────────── */}
         <div className="relative shrink-0 px-5 pt-5 pb-4 bg-[#050D1A] text-white">
           <button
+            type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+            aria-label="Cancel login"
+            className="absolute top-3.5 right-3.5 z-10 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
           >
-            <X size={15} />
+            <X size={16} strokeWidth={2.5} />
           </button>
 
-          <div className="flex items-center gap-2.5 pr-10">
+          <div className="flex items-center gap-2.5 pr-12">
             <span className="w-9 h-9 rounded-xl bg-gold/20 border border-gold/40 text-gold flex items-center justify-center shrink-0">
               <StepIcon size={16} />
             </span>
@@ -314,7 +332,13 @@ function GateDialog({
               <p className="text-xs text-gray-500">
                 Code sent to <strong className="text-gray-900">+91 {phone}</strong>.{" "}
                 <button
-                  onClick={() => setStep("phone")}
+                  onClick={() => {
+                    setStep("phone");
+                    setOtp(["", "", "", ""]);
+                    setKnownName(null);
+                    setIsNewUser(true);
+                    setDevOtp(null);
+                  }}
                   className="text-gold font-semibold hover:underline"
                 >
                   Change
@@ -345,22 +369,34 @@ function GateDialog({
                 </p>
               )}
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-                  Your name
-                </label>
-                <div className="relative">
-                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="e.g. Aarti Sharma"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                    className="w-full pl-9 pr-3 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none focus:border-gold focus:bg-white transition-colors"
-                  />
+              {knownName ? (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3.5 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/80 mb-0.5">
+                    Welcome back
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <User size={14} className="text-emerald-600 shrink-0" />
+                    {knownName}
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                    Your name {isNewUser ? "*" : ""}
+                  </label>
+                  <div className="relative">
+                    <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="e.g. Aarti Sharma"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                      className="w-full pl-9 pr-3 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none focus:border-gold focus:bg-white transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -544,4 +580,7 @@ function GateDialog({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(modal, document.body);
 }

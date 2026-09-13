@@ -131,6 +131,44 @@ export interface VendorStatusData {
   message: string;
 }
 
+export interface CustomerProfileData {
+  id: number;
+  phone: string;
+  full_name: string;
+  email: string | null;
+  wedding_date: string | null;
+  partner_name: string;
+  city: string;
+  state: string;
+  guest_count: number | null;
+  budget_min: string | number | null;
+  budget_max: string | number | null;
+  planning_status: string;
+  needs_catering: boolean;
+  needs_decoration: boolean;
+  needs_dj: boolean;
+  needs_planner: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CustomerProfileUpdateRequest = Partial<{
+  full_name: string;
+  email: string | null;
+  wedding_date: string | null;
+  partner_name: string;
+  city: string;
+  state: string;
+  guest_count: number | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  planning_status: string;
+  needs_catering: boolean;
+  needs_decoration: boolean;
+  needs_dj: boolean;
+  needs_planner: boolean;
+}>;
+
 // ─── API Wrapper ──────────────────────────────────────────────────────────────
 
 /** Unwrap the standard `{ success, data, message }` envelope */
@@ -248,5 +286,19 @@ export const vendorApi = {
       params: vendorType ? { vendor_type: vendorType } : {},
     });
     return unwrap<VendorProfileData[]>(data);
+  },
+};
+
+// ─── Customer Endpoints ───────────────────────────────────────────────────────
+
+export const customerApi = {
+  getProfile: async (): Promise<CustomerProfileData> => {
+    const { data } = await api.get("/auth/customer/profile/");
+    return unwrap<CustomerProfileData>(data);
+  },
+
+  updateProfile: async (payload: CustomerProfileUpdateRequest): Promise<CustomerProfileData> => {
+    const { data } = await api.patch("/auth/customer/profile/", payload);
+    return unwrap<CustomerProfileData>(data);
   },
 };

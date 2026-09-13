@@ -113,10 +113,11 @@ export default function GatedBookingModal({
   });
 
   const verifyOtpMutation = useMutation({
-    mutationFn: async (payload: { phone: string; otp: string }) => {
+    mutationFn: async (payload: { phone: string; otp: string; full_name?: string }) => {
       const response = await api.post("/auth/otp/verify/", {
         phone: payload.phone,
-        otp_code: payload.otp
+        otp_code: payload.otp,
+        ...(payload.full_name ? { full_name: payload.full_name } : {}),
       }).catch((err) => {
         if (err.response) throw err;
         console.warn("Using mock verify-otp fallback", err);
@@ -131,7 +132,7 @@ export default function GatedBookingModal({
                 phone: payload.phone,
                 role: "customer",
                 is_verified: true,
-                full_name: formData.name || "Mock Customer"
+                full_name: payload.full_name || formData.name || "Mock Customer"
               }
             }
           }
@@ -327,7 +328,7 @@ export default function GatedBookingModal({
     const e164Phone = `+91${cleanPhone}`;
 
     verifyOtpMutation.mutate(
-      { phone: e164Phone, otp },
+      { phone: e164Phone, otp, full_name: formData.name.trim() },
       {
         onSuccess: (data) => {
           const authData = data?.data || data;

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronDown, MapPin, Search, Users } from "lucide-react";
 import { todayISO } from "@/lib/discovery";
+import PlanningGateModal from "@/components/PlanningGateModal";
+import { useStore } from "@/store/store";
 
 const GUEST_CAPACITIES = [
   "100-300 guests",
@@ -17,18 +19,47 @@ const CITIES = [
   "Hyderabad", "Ahmedabad", "Lucknow", "Chandigarh", "Pune",
 ];
 
+function guestsFromLabel(label: string): number {
+  if (label.startsWith("1000")) return 1000;
+  const match = label.match(/(\d+)\s*-\s*(\d+)/);
+  if (match) return parseInt(match[2], 10);
+  return 300;
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const parts = `; ${document.cookie}`.split(`; ${name}=`);
+  return parts.length === 2 ? parts.pop()?.split(";").shift() || null : null;
+}
+
 export default function HeroSection() {
   const router = useRouter();
+  const storeToken = useStore((s) => s.token);
   const [city, setCity] = useState("Bhopal");
   const [guests, setGuests] = useState("300-600 guests");
   const [date, setDate] = useState("");
+  const [gateOpen, setGateOpen] = useState(false);
 
-  const handleSearch = () => {
+  const isSignedIn = !!(
+    storeToken ||
+    readCookie("access_token") ||
+    (typeof window !== "undefined" && localStorage.getItem("access_token"))
+  );
+
+  const goToVenues = () => {
     const params = new URLSearchParams({ city, guests });
     // Only venues free on the chosen date are listed — see the `date` filter
     // in VenueRepository.
     if (date) params.set("date", date);
     router.push(`/venues?${params.toString()}`);
+  };
+
+  const handleSearch = () => {
+    if (isSignedIn) {
+      goToVenues();
+      return;
+    }
+    setGateOpen(true);
   };
 
   return (
@@ -180,6 +211,7 @@ export default function HeroSection() {
           {/* Search Button */}
           <button
             id="hero-search-btn"
+            type="button"
             onClick={handleSearch}
             className="btn-gold justify-center cursor-pointer shrink-0 w-full md:w-auto active:scale-95 group/btn !rounded-xl md:!rounded-full !px-6 md:!px-9 !py-3.5 md:!py-0 md:self-stretch"
           >
@@ -225,6 +257,24 @@ export default function HeroSection() {
         style={{
           background:
             "linear-gradient(to bottom, transparent, var(--white))",
+        }}
+      />
+
+      <PlanningGateModal
+        isOpen={gateOpen}
+        onClose={() => setGateOpen(false)}
+        mode="login"
+        kind="venue"
+        title="Log in to find venues"
+        subtitle="Sign in with your mobile number to see venues matching your filters."
+        initialBrief={{
+          city,
+          date,
+          guests: guestsFromLabel(guests),
+        }}
+        onComplete={() => {
+          setGateOpen(false);
+          goToVenues();
         }}
       />
     </section>

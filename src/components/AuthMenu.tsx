@@ -201,7 +201,7 @@ export default function AuthMenu({ onDark = false }: { onDark?: boolean }) {
         >
           <div className="px-3.5 py-2 border-b border-gray-100">
             <p className="text-sm font-semibold text-gray-900 truncate">
-              {user?.full_name || "Signed in"}
+              {user?.full_name?.trim() || "My account"}
             </p>
             <p className="text-[11px] text-gray-400 truncate">{user?.phone || ""}</p>
           </div>
