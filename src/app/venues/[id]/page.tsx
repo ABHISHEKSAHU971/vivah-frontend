@@ -8,6 +8,7 @@ import ServiceSourcePicker, {
 } from "@/components/ServiceSourcePicker";
 import CateringMenuBuilder from "@/components/CateringMenuBuilder";
 import PlanningGateModal from "@/components/PlanningGateModal";
+import WeddingPlanProgress from "@/components/WeddingPlanProgress";
 import { use, useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -25,6 +26,8 @@ import {
   guestsFromQuery, loadDiscoveryBrief, saveDiscoveryBrief, todayISO,
   type DiscoveryBrief,
 } from "@/lib/discovery";
+import ListingHighlights from "@/components/ListingHighlights";
+import { markPlanningStep } from "@/lib/planningProgress";
 import { VENUE_TYPE_LABELS } from "@/components/VenueCard";
 
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=1400&q=80";
@@ -48,6 +51,14 @@ function readCookie(name: string): string | null {
 function toPolicy(raw: string | undefined): ServicePolicy {
   if (raw === "inhouse" || raw === "external" || raw === "none") return raw;
   return "both";
+}
+
+function policyHighlight(raw: string | undefined, inhouse: string, both: string): string {
+  if (raw === "inhouse") return inhouse;
+  if (raw === "both") return both;
+  if (raw === "none") return "Not available";
+  if (raw === "external") return "Outside vendors allowed";
+  return both;
 }
 
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -145,6 +156,16 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
     return () => { cancelled = true; };
   }, [signedIn, dateHydrated, eventDate, searchParams]);
 
+  // Track this venue in the wedding-plan progress strip as soon as they open it.
+  useEffect(() => {
+    if (!signedIn || !venue?.name) return;
+    markPlanningStep("venue", {
+      id: venueId,
+      name: venue.name,
+      href: `/venues/${venueId}`,
+    });
+  }, [signedIn, venueId, venue?.name]);
+
   const cateringPolicy = toPolicy(venue?.catering_policy);
   const decorPolicy = toPolicy(venue?.decoration_policy);
 
@@ -184,8 +205,22 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
     return inhouseCount > 0 && policy !== "external" ? "inhouse" : "external";
   };
 
-  const cateringSource = cateringSourcePick ?? defaultSource(cateringPolicy, cateringInhouse.length);
-  const decorSource = decorSourcePick ?? defaultSource(decorPolicy, decorInhouse.length);
+  const cateringSourceRaw = cateringSourcePick ?? defaultSource(cateringPolicy, cateringInhouse.length);
+  const decorSourceRaw = decorSourcePick ?? defaultSource(decorPolicy, decorInhouse.length);
+
+  // If Outside is hidden (no options), fall back to the venue's own packages.
+  const cateringSource: ServiceSource =
+    cateringSourceRaw === "external" && cateringExternal.length === 0 && cateringInhouse.length > 0
+      ? "inhouse"
+      : cateringSourceRaw === "inhouse" && cateringInhouse.length === 0 && cateringExternal.length > 0
+        ? "external"
+        : cateringSourceRaw;
+  const decorSource: ServiceSource =
+    decorSourceRaw === "external" && decorExternal.length === 0 && decorInhouse.length > 0
+      ? "inhouse"
+      : decorSourceRaw === "inhouse" && decorInhouse.length === 0 && decorExternal.length > 0
+        ? "external"
+        : decorSourceRaw;
 
   const activeCatering = cateringSource === "inhouse" ? cateringInhouse : cateringExternal;
   const activeDecor = decorSource === "inhouse" ? decorInhouse : decorExternal;
@@ -257,7 +292,7 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
         guest_count: guests,
         event_date: eventDate,
         catering_package: cateringPkgId ? Number(cateringPkgId) : null,
-        decoration_package: decorSource === "external" && decorPkgId ? Number(decorPkgId) : null,
+        decoration_package: decorPkgId ? Number(decorPkgId) : null,
         message:
           `Enquiry for ${venue?.name}. ${guests} guests on ${eventDate || "a date to be confirmed"}. ` +
           `Catering: ${cateringSource}${selectedCateringPkg ? ` (${selectedCateringPkg.name})` : ""}. ` +
@@ -265,7 +300,30 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
       });
       return res.data;
     },
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => {
+      markPlanningStep("venue", {
+        id: venueId,
+        name: venue?.name || "Venue",
+        href: `/venues/${venueId}`,
+      });
+      if (cateringPkgId && selectedCateringPkg) {
+        markPlanningStep("catering", {
+          id: cateringPkgId,
+          name: selectedCateringPkg.name,
+          href: "/services/catering",
+          meta: cateringSource,
+        });
+      }
+      if (decorPkgId && selectedDecorPkg) {
+        markPlanningStep("decoration", {
+          id: decorPkgId,
+          name: selectedDecorPkg.name,
+          href: "/services/decorations",
+          meta: decorSource,
+        });
+      }
+      setSubmitted(true);
+    },
   });
 
   const handleEnquire = () => {
@@ -336,6 +394,9 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
   return (
     <>
       <Navbar />
+      <div className="pt-16">
+        <WeddingPlanProgress />
+      </div>
 
       {/* ── Hero ───────────────────────────────────────────────── */}
       <div className="relative h-[52vh] min-h-[360px] w-full overflow-hidden bg-black">
@@ -414,21 +475,88 @@ function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
             <div className="lg:col-span-2 space-y-5">
               {photos.length > 0 && <VenueGallery photos={photos} venueName={venue.name} />}
 
-              {/* Fast facts */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: "Capacity", value: `${venue.max_capacity?.toLocaleString("en-IN")}`, icon: Users },
-                  { label: "Halls", value: venue.num_halls || "—", icon: Building2 },
-                  { label: "Rooms", value: rooms || "—", icon: BedDouble },
-                  { label: "Rating", value: rating > 0 ? rating.toFixed(1) : "New", icon: Star },
-                ].map(({ label, value, icon: Icon }) => (
-                  <div key={label} className="text-center">
-                    <Icon size={15} className="mx-auto text-gold mb-1" />
-                    <p className="text-sm font-bold text-gray-900">{value}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">{label}</p>
-                  </div>
-                ))}
-              </div>
+              {/* Venue highlights — gold-themed fact grid */}
+              <ListingHighlights
+                title="Venue Highlights"
+                items={[
+                  {
+                    label: "Max Capacity",
+                    value: `${Number(venue.max_capacity || 0).toLocaleString("en-IN")} guests`,
+                    icon: Users,
+                  },
+                  {
+                    label: "Space",
+                    value: [
+                      venue.is_outdoor ? "Outdoor" : null,
+                      venue.num_halls ? "Indoor hall" : null,
+                      venue.has_pool ? "Pool side" : null,
+                    ].filter(Boolean).join(", ") || VENUE_TYPE_LABELS[venue.venue_type] || "Venue",
+                    icon: Building2,
+                  },
+                  {
+                    label: "Total Rooms",
+                    value: rooms > 0 ? String(rooms) : "—",
+                    icon: BedDouble,
+                  },
+                  {
+                    label: "Star Rating",
+                    value: rating > 0 ? rating.toFixed(1) : "New",
+                    icon: Star,
+                  },
+                  {
+                    label: "Parking",
+                    value: venue.has_parking ? "Available" : "Not listed",
+                    icon: Car,
+                  },
+                  {
+                    label: "Daily Rent",
+                    value: `₹${Number(venue.price_per_day || 0).toLocaleString("en-IN")}`,
+                    icon: Sparkles,
+                  },
+                  {
+                    label: "Catering Policy",
+                    value: policyHighlight(
+                      venue.catering_policy,
+                      "In-house catering",
+                      "In-house + outside allowed"
+                    ),
+                    icon: CheckCircle2,
+                  },
+                  {
+                    label: "Decor Policy",
+                    value: policyHighlight(
+                      venue.decoration_policy,
+                      "In-house decoration",
+                      "In-house + outside allowed"
+                    ),
+                    icon: PartyPopper,
+                  },
+                  {
+                    label: "DJ Policy",
+                    value: policyHighlight(
+                      venue.dj_policy,
+                      "In-house DJ",
+                      "In-house + outside allowed"
+                    ),
+                    icon: Waves,
+                  },
+                  {
+                    label: "Halls",
+                    value: String(venue.num_halls || 0),
+                    icon: Building2,
+                  },
+                  {
+                    label: "Air Conditioning",
+                    value: venue.is_ac ? "Yes" : "Not listed",
+                    icon: AirVent,
+                  },
+                  {
+                    label: "Location",
+                    value: [venue.city, venue.state].filter(Boolean).join(", ") || "—",
+                    icon: MapPin,
+                  },
+                ]}
+              />
 
               {/* Tabs */}
               <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">

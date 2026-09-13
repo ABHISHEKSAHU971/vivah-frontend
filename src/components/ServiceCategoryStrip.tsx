@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Building2, Camera, Music, Palette, Sparkles, Utensils } from "lucide-react";
+import WeddingPlanProgress from "@/components/WeddingPlanProgress";
 
 const CATEGORIES = [
   { key: "venues", label: "Venues", href: "/venues", icon: Building2 },
@@ -15,12 +16,13 @@ const CATEGORIES = [
 export type ServiceCategoryKey = (typeof CATEGORIES)[number]["key"];
 
 /**
- * The horizontal category rail that sits above every listing page, so a couple
- * can jump between venue and vendor catalogues without going back home.
+ * Category rail above listing pages, with wedding-plan progress when signed in.
  */
 export default function ServiceCategoryStrip({ active }: { active: ServiceCategoryKey }) {
   return (
     <div className="bg-white border-b border-gray-200">
+      <WeddingPlanProgress />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex gap-1 overflow-x-auto no-scrollbar py-2.5">
           {CATEGORIES.map(({ key, label, href, icon: Icon }) => {

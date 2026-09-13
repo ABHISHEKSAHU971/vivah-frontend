@@ -2,10 +2,12 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ListingHighlights from "@/components/ListingHighlights";
+import WeddingPlanProgress from "@/components/WeddingPlanProgress";
 import { useState, use } from "react";
 import {
   MapPin, Check, MessageSquare, ArrowLeft, Star, Sparkles, Palette,
-  CheckCircle, ShieldCheck, Phone, Clock
+  CheckCircle, ShieldCheck, Phone, Clock, IndianRupee
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,6 +15,7 @@ import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
 import { getImageUrl } from "@/lib/api";
+import { markPlanningStep } from "@/lib/planningProgress";
 
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&q=80";
 
@@ -82,6 +85,8 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
   const [success, setSuccess] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+  const [selectedTierId, setSelectedTierId] = useState<number | string | null>(null);
+  const [selectedTierLabel, setSelectedTierLabel] = useState("");
   const [activeTab, setActiveTab] = useState<"packages" | "about">("packages");
 
   const { data: dbVendors, isLoading } = useQuery({
@@ -115,14 +120,33 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
 
   const activeDecorator = decorator || MOCK_DECORATORS[0];
 
-  const handleBookClick = (pkgId?: number) => {
+  const handleBookClick = (pkgId?: number, tierLabel?: string) => {
     if (pkgId) setSelectedPackageId(pkgId);
+    setSelectedTierLabel(tierLabel || "");
+    setIsModalOpen(true);
+  };
+
+  const handleSelectTier = (pkg: any, tier: any) => {
+    const tierName = tier.name || (tier.tier ? String(tier.tier) : "Package");
+    const price = Number(tier.price || 0);
+    const label = `${tierName}${price ? ` · ₹${price.toLocaleString("en-IN")}` : ""}`;
+    setSelectedPackageId(pkg.id);
+    setSelectedTierId(tier.id ?? `${pkg.id}-${tierName}`);
+    setSelectedTierLabel(label);
+    markPlanningStep("decoration", {
+      id: pkg.id,
+      name: `${pkg.name} — ${tierName}`,
+      href: `/services/decorations/${decoratorId}`,
+    });
     setIsModalOpen(true);
   };
 
   return (
     <>
       <Navbar />
+      <div className="pt-16">
+        <WeddingPlanProgress />
+      </div>
 
       <div className="relative h-[55vh] min-h-[380px] w-full overflow-hidden bg-black">
         <Image
@@ -191,6 +215,47 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-5">
+                <ListingHighlights
+                  title="Decorator Highlights"
+                  items={[
+                    {
+                      label: "Styles",
+                      value: activeDecorator.type || "Decoration",
+                      icon: Palette,
+                    },
+                    {
+                      label: "Themes",
+                      value: String(activeDecorator.themes_count || activeDecorator.packages?.length || 0),
+                      icon: Sparkles,
+                    },
+                    {
+                      label: "Packages",
+                      value: String(
+                        activeDecorator.packages?.reduce(
+                          (n: number, p: any) => n + (p.tiers?.length || 0),
+                          0
+                        ) || 0
+                      ),
+                      icon: CheckCircle,
+                    },
+                    {
+                      label: "Starting From",
+                      value: `₹${Number(activeDecorator.price).toLocaleString("en-IN")}`,
+                      icon: IndianRupee,
+                    },
+                    {
+                      label: "City",
+                      value: [activeDecorator.city, activeDecorator.state].filter(Boolean).join(", ") || "—",
+                      icon: MapPin,
+                    },
+                    {
+                      label: "Rating",
+                      value: `${activeDecorator.rating} (${activeDecorator.total_reviews} reviews)`,
+                      icon: Star,
+                    },
+                  ]}
+                />
+
                 <div className="bg-white rounded-2xl p-4 flex flex-wrap gap-2 shadow-sm border border-gray-100">
                   <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold self-center mr-1">Styles:</span>
                   {activeDecorator.specialties.map((s: string, i: number) => (
@@ -263,10 +328,17 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
                                 */}
                                 {pkg.tiers.map((tier: any, ti: number) => {
                                   const meta = tier.tier ? TIER_LABELS[tier.tier] : null;
+                                  const isSelected =
+                                    selectedPackageId === pkg.id &&
+                                    selectedTierId === (tier.id ?? `${pkg.id}-${tier.name || meta?.label || "Package"}`);
                                   return (
                                     <div
                                       key={tier.id ?? ti}
-                                      className={`rounded-xl border p-3 ${meta?.bg || "bg-gray-50 border-gray-100"}`}
+                                      className={`rounded-xl border p-3 transition-all ${
+                                        isSelected
+                                          ? "border-gold bg-gold/5 ring-1 ring-gold/30"
+                                          : meta?.bg || "bg-gray-50 border-gray-100"
+                                      }`}
                                     >
                                       <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">
@@ -307,6 +379,18 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
                                           ))}
                                         </ul>
                                       )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSelectTier(pkg, tier)}
+                                        className={`mt-3 w-full rounded-lg py-2 text-[11px] font-bold transition-all ${
+                                          isSelected
+                                            ? "btn-gold"
+                                            : "bg-gray-900 text-white hover:bg-black"
+                                        }`}
+                                      >
+                                        {isSelected ? "Selected · Enquire" : "Select this package"}
+                                      </button>
                                     </div>
                                   );
                                 })}
@@ -485,10 +569,26 @@ export default function DecoratorDetailPage({ params }: { params: Promise<{ id: 
         <GatedBookingModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          onSuccess={() => setSuccess(true)}
+          onSuccess={() => {
+            if (selectedPackageId) {
+              markPlanningStep("decoration", {
+                id: selectedPackageId,
+                name: selectedTierLabel
+                  ? `${activeDecorator.name} · ${selectedTierLabel}`
+                  : activeDecorator.name,
+                href: `/services/decorations/${decoratorId}`,
+              });
+            }
+            setSuccess(true);
+          }}
           vendorName={activeDecorator.name}
           serviceType="decorator"
           decorationPackageId={selectedPackageId}
+          customizationDetails={
+            selectedTierLabel
+              ? `Selected package: ${selectedTierLabel}`
+              : undefined
+          }
         />
       )}
     </>

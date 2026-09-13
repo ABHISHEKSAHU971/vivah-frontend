@@ -2,10 +2,12 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ListingHighlights from "@/components/ListingHighlights";
+import WeddingPlanProgress from "@/components/WeddingPlanProgress";
 import { useState, use } from "react";
 import { 
   MapPin, Check, MessageSquare, ArrowLeft, Star, Users, CheckCircle, 
-  Utensils, ChefHat, Clock, ShieldCheck, Phone
+  Utensils, ChefHat, Clock, ShieldCheck, Phone, IndianRupee
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,6 +15,7 @@ import { vendorApi } from "@/lib/authApi";
 import { useQuery } from "@tanstack/react-query";
 import GatedBookingModal from "@/components/GatedBookingModal";
 import { getImageUrl } from "@/lib/api";
+import { markPlanningStep } from "@/lib/planningProgress";
 
 const MOCK_CATERERS = [
   { 
@@ -138,13 +141,24 @@ export default function CatererDetailPage({ params }: { params: Promise<{ id: st
   const activeCaterer = caterer || MOCK_CATERERS[0];
 
   const handleBookClick = (pkgId?: number) => {
-    if (pkgId) setSelectedPackageId(pkgId);
+    if (pkgId) {
+      setSelectedPackageId(pkgId);
+      const pkg = activeCaterer.packages?.find((p: any) => p.id === pkgId);
+      markPlanningStep("catering", {
+        id: pkgId,
+        name: pkg?.name || activeCaterer.name,
+        href: `/services/catering/${catererId}`,
+      });
+    }
     setIsModalOpen(true);
   };
 
   return (
     <>
       <Navbar />
+      <div className="pt-16">
+        <WeddingPlanProgress />
+      </div>
 
       {/* ── Full-width Hero ───────────────────────────────────────── */}
       <div className="relative h-[55vh] min-h-[380px] w-full overflow-hidden bg-black">
@@ -220,6 +234,42 @@ export default function CatererDetailPage({ params }: { params: Promise<{ id: st
 
               {/* ── Left: Main Details ─────────────────────── */}
               <div className="lg:col-span-2 space-y-5">
+
+                <ListingHighlights
+                  title="Catering Highlights"
+                  items={[
+                    {
+                      label: "Cuisines",
+                      value: activeCaterer.type || "Multi-cuisine",
+                      icon: Utensils,
+                    },
+                    {
+                      label: "Min Guests",
+                      value: String(activeCaterer.min_guests || 50),
+                      icon: Users,
+                    },
+                    {
+                      label: "From / plate",
+                      value: `₹${Number(activeCaterer.price_per_plate).toLocaleString("en-IN")}`,
+                      icon: IndianRupee,
+                    },
+                    {
+                      label: "Packages",
+                      value: String(activeCaterer.packages?.length || 0),
+                      icon: ChefHat,
+                    },
+                    {
+                      label: "City",
+                      value: [activeCaterer.city, activeCaterer.state].filter(Boolean).join(", ") || "—",
+                      icon: MapPin,
+                    },
+                    {
+                      label: "Rating",
+                      value: `${activeCaterer.rating} (${activeCaterer.total_reviews} reviews)`,
+                      icon: Star,
+                    },
+                  ]}
+                />
 
                 {/* Specialties strip */}
                 <div className="bg-white rounded-2xl p-4 flex flex-wrap gap-2 shadow-sm border border-gray-100">

@@ -7,6 +7,7 @@ import {
 import { useStore } from "@/store/store";
 import { api } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
+import { loadDiscoveryBrief } from "@/lib/discovery";
 
 interface GatedBookingModalProps {
   isOpen: boolean;
@@ -74,6 +75,7 @@ export default function GatedBookingModal({
 
     // If verified, prefill Name/Phone from store/Zustand if available
     if (verified) {
+      const brief = loadDiscoveryBrief();
       setFormData((prev) => {
         const rawPhone = storeUser?.phone || storeOnboardingPhone || prev.phone || "";
         let cleanPhone = rawPhone.replace(/\D/g, "");
@@ -84,7 +86,8 @@ export default function GatedBookingModal({
           ...prev,
           name: storeUser?.full_name || prev.name || "Customer",
           phone: cleanPhone,
-          guestCount: prev.guestCount || String(storeOnboardingGuests || "150")
+          guestCount: prev.guestCount || String(brief?.guests || storeOnboardingGuests || "150"),
+          eventDate: prev.eventDate || brief?.date || "",
         };
       });
     }

@@ -342,9 +342,15 @@ export default function ServiceSourcePicker({
         </p>
       ) : (
         <>
-          {/* Source tabs */}
+          {/* Source tabs — only show tabs that actually have options */}
           <div className="flex gap-2">
-            {(["inhouse", "external"] as const).map((which) => {
+            {(["inhouse", "external"] as const)
+              .filter((which) => {
+                const usable = which === "inhouse" ? inhouseUsable : externalUsable;
+                // Hide empty Outside / in-house stubs; show a tab only when bookable.
+                return usable || loading;
+              })
+              .map((which) => {
               const usable = which === "inhouse" ? inhouseUsable : externalUsable;
               const count = which === "inhouse" ? inhouseOptions.length : externalOptions.length;
               const active = source === which;
@@ -383,6 +389,18 @@ export default function ServiceSourcePicker({
               );
             })}
           </div>
+
+          {/* When only one source exists, auto-label without empty twin tab */}
+          {!loading && inhouseUsable && !externalUsable && source === "inhouse" && (
+            <p className="text-[10px] text-gray-500 -mt-1">
+              Showing this venue&apos;s own {copy.title.toLowerCase()} options.
+            </p>
+          )}
+          {!loading && externalUsable && !inhouseUsable && source === "external" && (
+            <p className="text-[10px] text-gray-500 -mt-1">
+              Venue kitchen unavailable — choose an outside option below.
+            </p>
+          )}
 
           {source !== "none" && !inhouseUsable && !externalUsable && !loading && (
             <p className="flex items-start gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
