@@ -1,6 +1,9 @@
 "use client";
 
-import { AlertCircle, Check, ChefHat, Home, Loader2, Store, Users } from "lucide-react";
+import { useState } from "react";
+import {
+  AlertCircle, Check, ChefHat, Home, Loader2, Store, Users, X,
+} from "lucide-react";
 
 export type ServiceSource = "inhouse" | "external" | "none";
 export type ServicePolicy = "inhouse" | "external" | "both" | "none";
@@ -9,10 +12,14 @@ export interface ServiceOption {
   id: number;
   name: string;
   vendor_name?: string;
+  is_inhouse?: boolean;
   /** Catering only. */
   price_per_plate?: string | number;
+  price_per_plate_without_material?: string | number;
+  material_option?: string;
   min_plates?: number;
   cuisine_type?: string;
+  description?: string;
   menu_items?: {
     id: number;
     name: string;
@@ -23,8 +30,22 @@ export interface ServiceOption {
   course_sections?: Record<string, { min: number; max: number }>;
   /** Decoration only. */
   style?: string;
-  tiers?: { id: number; tier: string; price: string | number }[];
-  description?: string;
+  includes?: string[];
+  excludes?: string[];
+  colour_theme?: string[];
+  flowers?: string[];
+  tiers?: {
+    id: number;
+    name?: string;
+    tier: string;
+    price: string | number;
+    description?: string;
+    inclusions?: string[];
+    excludes?: string[];
+    min_guests?: number;
+    max_guests?: number;
+  }[];
+  add_ons?: { id: number; name: string; price: string | number }[];
 }
 
 interface Props {
@@ -64,6 +85,197 @@ const COPY = {
   },
 } as const;
 
+function PackageDetailsModal({
+  kind,
+  option,
+  onClose,
+}: {
+  kind: "catering" | "decoration";
+  option: ServiceOption;
+  onClose: () => void;
+}) {
+  const fromPrice =
+    kind === "catering"
+      ? Number(option.price_per_plate || 0)
+      : Math.min(...(option.tiers?.map((t) => Number(t.price)) ?? [0]).filter((n) => n > 0), Infinity);
+
+  const menuByCourse = (option.menu_items ?? []).reduce<Record<string, string[]>>((acc, item) => {
+    const course = item.course || "other";
+    if (!acc[course]) acc[course] = [];
+    acc[course].push(item.name);
+    return acc;
+  }, {});
+
+  return (
+    <div className="fixed inset-0 z-[220] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-[#050D1A]/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${option.name} details`}
+        className="relative w-full sm:max-w-lg max-h-[85vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl"
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 bg-white border-b border-gray-100">
+          <div className="min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gold">
+              {kind === "catering" ? "Catering package" : "Decoration theme"}
+            </p>
+            <h3 className="text-base font-semibold text-gray-900 truncate">{option.name}</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+              {option.vendor_name || (option.is_inhouse ? "Venue's own team" : "Partner vendor")}
+              {kind === "catering" && option.cuisine_type ? ` · ${option.cuisine_type}` : ""}
+              {kind === "decoration" && option.style ? ` · ${option.style}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close details"
+            className="shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 text-sm">
+          {Number.isFinite(fromPrice) && fromPrice > 0 && (
+            <div className="rounded-xl bg-gold/5 border border-gold/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                {kind === "catering" ? "Per plate" : "From"}
+              </span>
+              <span className="text-lg font-bold text-gray-900">
+                ₹{fromPrice.toLocaleString("en-IN")}
+              </span>
+            </div>
+          )}
+
+          {kind === "catering" && (
+            <div className="grid grid-cols-2 gap-2 text-[12px]">
+              {option.min_plates ? (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-gray-400">Min plates</p>
+                  <p className="font-semibold text-gray-900">{option.min_plates}</p>
+                </div>
+              ) : null}
+              {option.price_per_plate_without_material ? (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-gray-400">Without material</p>
+                  <p className="font-semibold text-gray-900">
+                    ₹{Number(option.price_per_plate_without_material).toLocaleString("en-IN")}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {option.description && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Description</p>
+              <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">{option.description}</p>
+            </div>
+          )}
+
+          {kind === "catering" && Object.keys(menuByCourse).length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Menu items</p>
+              <div className="space-y-2">
+                {Object.entries(menuByCourse).map(([course, names]) => (
+                  <div key={course} className="rounded-xl border border-gray-100 px-3 py-2">
+                    <p className="text-[11px] font-bold text-gray-800 capitalize mb-1">{course}</p>
+                    <p className="text-[12px] text-gray-600 leading-relaxed">{names.join(", ")}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {kind === "decoration" && (
+            <>
+              {!!option.includes?.length && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Includes</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {option.includes.map((item) => (
+                      <span key={item} className="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!!option.excludes?.length && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Not included</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {option.excludes.map((item) => (
+                      <span key={item} className="text-[11px] px-2 py-1 rounded-lg bg-gray-50 text-gray-600 border border-gray-200">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!!option.tiers?.length && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Packages</p>
+                  <div className="space-y-2">
+                    {option.tiers.map((tier) => (
+                      <div key={tier.id} className="rounded-xl border border-gray-100 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-gray-900">
+                              {tier.name || String(tier.tier).toUpperCase()}
+                            </p>
+                            {(tier.min_guests || tier.max_guests) && (
+                              <p className="text-[11px] text-gray-500">
+                                Guests {tier.min_guests || "—"}–{tier.max_guests || "—"}
+                              </p>
+                            )}
+                          </div>
+                          <p className="shrink-0 text-[13px] font-bold text-gray-900">
+                            ₹{Number(tier.price).toLocaleString("en-IN")}
+                          </p>
+                        </div>
+                        {tier.description && (
+                          <p className="text-[12px] text-gray-600 mt-1.5 leading-relaxed">{tier.description}</p>
+                        )}
+                        {!!tier.inclusions?.length && (
+                          <p className="text-[11px] text-gray-500 mt-1.5">
+                            Includes: {tier.inclusions.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!!option.add_ons?.length && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Add-ons</p>
+                  <ul className="space-y-1">
+                    {option.add_ons.map((a) => (
+                      <li key={a.id} className="flex justify-between gap-2 text-[12px] text-gray-700">
+                        <span>{a.name}</span>
+                        <span className="font-semibold">₹{Number(a.price).toLocaleString("en-IN")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 px-5 py-3 bg-white border-t border-gray-100">
+          <button type="button" onClick={onClose} className="btn-gold w-full justify-center rounded-xl py-2.5 text-sm">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The in-house vs external chooser used for both catering and decoration.
  *
@@ -79,6 +291,7 @@ export default function ServiceSourcePicker({
 }: Props) {
   const copy = COPY[kind];
   const KindIcon = copy.icon;
+  const [detailsOpt, setDetailsOpt] = useState<ServiceOption | null>(null);
 
   const options = source === "inhouse" ? inhouseOptions : externalOptions;
 
@@ -198,46 +411,60 @@ export default function ServiceSourcePicker({
                       ? Number(opt.price_per_plate || 0)
                       : Math.min(...(opt.tiers?.map((t) => Number(t.price)) ?? [0]));
                   return (
-                    <button
+                    <div
                       key={opt.id}
-                      type="button"
-                      onClick={() => onSelect(String(opt.id))}
                       className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all ${
                         active
                           ? "border-gold bg-gold/5 shadow-sm"
                           : "border-gray-200 bg-white hover:border-gray-300"
                       }`}
                     >
-                      <span className="flex items-start justify-between gap-2">
-                        <span className="min-w-0">
-                          <span className="block text-[12px] font-semibold text-gray-900 truncate">
-                            {opt.name}
-                          </span>
-                          <span className="block text-[10px] text-gray-500 truncate">
-                            {opt.vendor_name || (source === "inhouse" ? "Venue's own team" : "Partner vendor")}
-                            {kind === "catering" && opt.min_plates ? ` · min ${opt.min_plates} plates` : ""}
-                            {kind === "decoration" && opt.style ? ` · ${opt.style}` : ""}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          {fromPrice > 0 && (
-                            <>
-                              <span className="block text-[9px] text-gray-400 leading-none">
-                                {kind === "catering" ? "per plate" : "from"}
-                              </span>
-                              <span className="text-[13px] font-bold text-gray-900">
-                                ₹{fromPrice.toLocaleString("en-IN")}
-                              </span>
-                            </>
-                          )}
-                          {active && (
-                            <span className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-gold">
-                              <Check size={9} /> Selected
+                      <button
+                        type="button"
+                        onClick={() => onSelect(String(opt.id))}
+                        className="w-full text-left"
+                      >
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block text-[12px] font-semibold text-gray-900 truncate">
+                              {opt.name}
                             </span>
-                          )}
+                            <span className="block text-[10px] text-gray-500 truncate">
+                              {opt.vendor_name || (source === "inhouse" ? "Venue's own team" : "Partner vendor")}
+                              {kind === "catering" && opt.min_plates ? ` · min ${opt.min_plates} plates` : ""}
+                              {kind === "decoration" && opt.style ? ` · ${opt.style}` : ""}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            {fromPrice > 0 && (
+                              <>
+                                <span className="block text-[9px] text-gray-400 leading-none">
+                                  {kind === "catering" ? "per plate" : "from"}
+                                </span>
+                                <span className="text-[13px] font-bold text-gray-900">
+                                  ₹{fromPrice.toLocaleString("en-IN")}
+                                </span>
+                              </>
+                            )}
+                            {active && (
+                              <span className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-gold">
+                                <Check size={9} /> Selected
+                              </span>
+                            )}
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetailsOpt(opt);
+                        }}
+                        className="mt-2 text-[10px] font-semibold text-gold hover:text-gold/80 underline-offset-2 hover:underline"
+                      >
+                        See full details
+                      </button>
+                    </div>
                   );
                 })
               )}
@@ -252,6 +479,10 @@ export default function ServiceSourcePicker({
             {source === "inhouse" ? copy.inhouseHint : copy.externalHint}
           </p>
         </>
+      )}
+
+      {detailsOpt && (
+        <PackageDetailsModal kind={kind} option={detailsOpt} onClose={() => setDetailsOpt(null)} />
       )}
     </div>
   );

@@ -12,7 +12,7 @@ import { useStore } from "@/store/store";
 import { CITIES_BY_STATE } from "@/lib/indiaLocations";
 import {
   DECORATION_STYLES, DISCOVERY_TARGETS, DJ_TIERS, briefToListingUrl,
-  normalisePhone, todayISO,
+  normalisePhone, saveDiscoveryBrief, todayISO,
   type DiscoveryBrief, type DiscoveryKind,
 } from "@/lib/discovery";
 
@@ -192,6 +192,7 @@ function GateDialog({
       if (loginOnly) {
         // Callers like the hero search pass onComplete to continue with filters
         // after authentication — without forcing the brief step again.
+        saveDiscoveryBrief(brief);
         if (onComplete) onComplete(brief);
         onClose();
         return;
@@ -207,6 +208,7 @@ function GateDialog({
   const handleShowResults = () => {
     setOnboardingField("location", brief.city);
     setOnboardingField("guests", brief.guests);
+    saveDiscoveryBrief(brief);
     if (onComplete) {
       onComplete(brief);
     } else {

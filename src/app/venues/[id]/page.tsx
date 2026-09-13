@@ -8,9 +8,10 @@ import ServiceSourcePicker, {
 } from "@/components/ServiceSourcePicker";
 import CateringMenuBuilder from "@/components/CateringMenuBuilder";
 import PlanningGateModal from "@/components/PlanningGateModal";
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import {
   AirVent, ArrowLeft, BedDouble, Building2, CalendarDays, CheckCircle2, Car,
   Check, Info, Loader2, Lock, MapPin, PartyPopper, ShieldCheck, Sparkles,
@@ -18,8 +19,12 @@ import {
 } from "lucide-react";
 import { useStore } from "@/store/store";
 import { api } from "@/lib/api";
+import { customerApi } from "@/lib/authApi";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { todayISO, type DiscoveryBrief } from "@/lib/discovery";
+import {
+  guestsFromQuery, loadDiscoveryBrief, saveDiscoveryBrief, todayISO,
+  type DiscoveryBrief,
+} from "@/lib/discovery";
 import { VENUE_TYPE_LABELS } from "@/components/VenueCard";
 
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=1400&q=80";
@@ -46,11 +51,44 @@ function toPolicy(raw: string | undefined): ServicePolicy {
 }
 
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center min-h-screen bg-[#f5f3ef]">
+        <Loader2 className="w-8 h-8 animate-spin text-gold" />
+      </div>
+    }>
+      <VenueDetailContent params={params} />
+    </Suspense>
+  );
+}
+
+function VenueDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const venueId = Number(use(params).id);
+  const searchParams = useSearchParams();
 
   const storeToken = useStore((s) => s.token);
   const storeUser = useStore((s) => s.user);
   const storeOnboardingPhone = useStore((s) => s.onboarding.phone);
+  const storeGuests = useStore((s) => s.onboarding.guests);
+
+  // Prefill from URL → saved discovery brief → onboarding guests.
+  const [guests, setGuests] = useState(() => {
+    const saved = loadDiscoveryBrief();
+    return (
+      guestsFromQuery(searchParams.get("guests")) ||
+      saved?.guests ||
+      storeGuests ||
+      300
+    );
+  });
+  const [eventDate, setEventDate] = useState(() => {
+    const saved = loadDiscoveryBrief();
+    return searchParams.get("date") || saved?.date || "";
+  });
+  const [dateHydrated, setDateHydrated] = useState(() => {
+    const saved = loadDiscoveryBrief();
+    return !!(searchParams.get("date") || saved?.date);
+  });
 
   // ── Venue ─────────────────────────────────────────────────────────────
   const { data: venue, isLoading } = useQuery({
@@ -63,8 +101,6 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   });
 
   // ── Quote inputs ──────────────────────────────────────────────────────
-  const [guests, setGuests] = useState(300);
-  const [eventDate, setEventDate] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [gateOpen, setGateOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -84,6 +120,30 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     readCookie("access_token") ||
     (typeof window !== "undefined" && localStorage.getItem("access_token"))
   );
+
+  // When already logged in with a saved wedding date, fill the quote date once.
+  useEffect(() => {
+    if (!signedIn || dateHydrated || eventDate) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await customerApi.getProfile();
+        if (cancelled) return;
+        if (profile.wedding_date) {
+          setEventDate(profile.wedding_date.slice(0, 10));
+          saveDiscoveryBrief({ date: profile.wedding_date.slice(0, 10) });
+        }
+        if (profile.guest_count && !searchParams.get("guests")) {
+          setGuests(profile.guest_count);
+        }
+      } catch {
+        /* guest may not have a customer profile yet */
+      } finally {
+        if (!cancelled) setDateHydrated(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [signedIn, dateHydrated, eventDate, searchParams]);
 
   const cateringPolicy = toPolicy(venue?.catering_policy);
   const decorPolicy = toPolicy(venue?.decoration_policy);
@@ -217,7 +277,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const applyBrief = (brief: DiscoveryBrief) => {
-    if (brief.date) setEventDate(brief.date);
+    saveDiscoveryBrief(brief);
+    if (brief.date) {
+      setEventDate(brief.date);
+      setDateHydrated(true);
+    }
     if (brief.guests) setGuests(brief.guests);
   };
 
@@ -546,7 +610,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           type="number"
                           min={10}
                           value={guests}
-                          onChange={(e) => setGuests(Number(e.target.value))}
+                          onChange={(e) => {
+                            const next = Number(e.target.value);
+                            setGuests(next);
+                            saveDiscoveryBrief({ date: eventDate, guests: next });
+                          }}
                           className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-gray-900 focus:outline-none focus:border-gold focus:bg-white"
                         />
                       </div>
@@ -558,7 +626,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           type="date"
                           min={todayISO()}
                           value={eventDate}
-                          onChange={(e) => setEventDate(e.target.value)}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setEventDate(next);
+                            setDateHydrated(true);
+                            saveDiscoveryBrief({ date: next, guests });
+                          }}
                           className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-gray-900 focus:outline-none focus:border-gold focus:bg-white [color-scheme:light]"
                         />
                       </div>

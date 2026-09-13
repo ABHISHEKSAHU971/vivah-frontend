@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronDown, MapPin, Search, Users } from "lucide-react";
-import { todayISO } from "@/lib/discovery";
+import { saveDiscoveryBrief, todayISO } from "@/lib/discovery";
 import PlanningGateModal from "@/components/PlanningGateModal";
 import { useStore } from "@/store/store";
 
@@ -51,6 +51,11 @@ export default function HeroSection() {
     // Only venues free on the chosen date are listed — see the `date` filter
     // in VenueRepository.
     if (date) params.set("date", date);
+    saveDiscoveryBrief({
+      city,
+      date,
+      guests: guestsFromLabel(guests),
+    });
     router.push(`/venues?${params.toString()}`);
   };
 

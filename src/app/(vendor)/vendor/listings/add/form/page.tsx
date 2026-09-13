@@ -365,13 +365,16 @@ function AddListingForm() {
 
   const handleDetailChange = (name: string, value: any) => {
     setDetailForm((prev: any) => ({ ...prev, [name]: value }));
-    if (formErrors[`details.${name}`]) {
-      setFormErrors((prev) => {
-        const copy = { ...prev };
-        delete copy[`details.${name}`];
-        return copy;
-      });
-    }
+    setFormErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[`details.${name}`];
+      if (name === "themes") {
+        Object.keys(copy).forEach((key) => {
+          if (key.startsWith("themes.") || key === "details.themes") delete copy[key];
+        });
+      }
+      return copy;
+    });
   };
 
   // Multiple checkbox selectors
@@ -2300,6 +2303,14 @@ function AddListingForm() {
             />
           )}
 
+          {Object.keys(formErrors).some(
+            (k) => k.startsWith("themes.") || k === "details.themes"
+          ) && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 font-semibold animate-pulse">
+              Please fix the highlighted decoration fields above before continuing to media.
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-gray-100">
             <button
               type="button"
@@ -2974,9 +2985,9 @@ function AddListingForm() {
                     })()}
                   </div>
 
-                  {/* Selection Form */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-zinc-50/50 p-3 border border-gray-150 rounded-xl">
-                    <div className="sm:col-span-4 space-y-1">
+                  {/* Selection Form — fields + action on one row */}
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap lg:flex-nowrap items-stretch sm:items-end gap-3 bg-zinc-50/50 p-3 border border-gray-150 rounded-xl">
+                    <div className="flex-1 min-w-[140px] space-y-1">
                       <label className="text-[9px] font-bold text-gray-400 uppercase block">Course Menu</label>
                       <select
                         id={`sel-course-${idx}`}
@@ -2997,7 +3008,7 @@ function AddListingForm() {
                             countEl.value = existing?.count ? String(existing.count) : "none";
                           }
                         }}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold h-[32px]"
                       >
                         {COURSE_TYPES.map((c) => (
                           <option key={c.value} value={c.value}>{c.label}</option>
@@ -3005,22 +3016,22 @@ function AddListingForm() {
                       </select>
                     </div>
 
-                    <div id={`sel-other-div-${idx}`} className="sm:col-span-4 space-y-1 hidden">
+                    <div id={`sel-other-div-${idx}`} className="flex-1 min-w-[140px] space-y-1 hidden">
                       <label className="text-[9px] font-bold text-gray-400 uppercase block">Custom Option Name</label>
                       <input
                         type="text"
                         id={`sel-custom-name-${idx}`}
                         placeholder="e.g. Mocktails, Ice Cream"
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold h-[32px]"
                       />
                     </div>
 
-                    <div className="sm:col-span-4 space-y-1">
+                    <div className="w-full sm:w-[120px] shrink-0 space-y-1">
                       <label className="text-[9px] font-bold text-gray-400 uppercase block">Count / Quantity</label>
                       <select
                         id={`sel-count-${idx}`}
                         defaultValue="1"
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-900 focus:outline-none focus:border-gold h-[32px]"
                       >
                         <option value="none">No Count (Optional)</option>
                         {Array.from({ length: 15 }, (_, i) => i + 1).map((num) => (
@@ -3029,58 +3040,56 @@ function AddListingForm() {
                       </select>
                     </div>
 
-                    <div className="sm:col-span-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const courseEl = document.getElementById(`sel-course-${idx}`) as HTMLSelectElement;
-                          const countEl = document.getElementById(`sel-count-${idx}`) as HTMLSelectElement;
-                          const customNameEl = document.getElementById(`sel-custom-name-${idx}`) as HTMLInputElement;
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const courseEl = document.getElementById(`sel-course-${idx}`) as HTMLSelectElement;
+                        const countEl = document.getElementById(`sel-count-${idx}`) as HTMLSelectElement;
+                        const customNameEl = document.getElementById(`sel-custom-name-${idx}`) as HTMLInputElement;
 
-                          const category = courseEl?.value || "Starters";
-                          const countVal = countEl?.value;
-                          const count = countVal === "none" ? undefined : parseInt(countVal, 10);
-                          const customName = category === "Other" ? (customNameEl?.value.trim() || "Other") : undefined;
+                        const category = courseEl?.value || "Starters";
+                        const countVal = countEl?.value;
+                        const count = countVal === "none" ? undefined : parseInt(countVal, 10);
+                        const customName = category === "Other" ? (customNameEl?.value.trim() || "Other") : undefined;
 
-                          if (category === "Other" && !customName) return;
+                        if (category === "Other" && !customName) return;
 
-                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
-                          const existingIdx = selections.findIndex((s: MenuSelection) =>
-                            s.category === category && (category !== "Other" || s.customName === customName)
-                          );
+                        const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                        const existingIdx = selections.findIndex((s: MenuSelection) =>
+                          s.category === category && (category !== "Other" || s.customName === customName)
+                        );
 
-                          const newSelection: MenuSelection = {
-                            category,
-                            customName,
-                            count
-                          };
+                        const newSelection: MenuSelection = {
+                          category,
+                          customName,
+                          count
+                        };
 
-                          const updated = existingIdx >= 0
-                            ? selections.map((s: MenuSelection, i: number) => (i === existingIdx ? newSelection : s))
-                            : [...selections, newSelection];
-                          const list = [...detailForm.packages];
-                          list[idx] = {
-                            ...pkg,
-                            menu_selections: updated,
-                            description: formatSelectionsToDescription(updated)
-                          };
-                          handleDetailChange("packages", list);
+                        const updated = existingIdx >= 0
+                          ? selections.map((s: MenuSelection, i: number) => (i === existingIdx ? newSelection : s))
+                          : [...selections, newSelection];
+                        const list = [...detailForm.packages];
+                        list[idx] = {
+                          ...pkg,
+                          menu_selections: updated,
+                          description: formatSelectionsToDescription(updated)
+                        };
+                        handleDetailChange("packages", list);
 
-                          if (customNameEl) customNameEl.value = "";
-                        }}
-                        className="w-full btn-gold rounded-lg py-1.5 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm h-[32px]"
-                      >
-                        {(() => {
-                          const courseEl = typeof document !== "undefined"
-                            ? document.getElementById(`sel-course-${idx}`) as HTMLSelectElement | null
-                            : null;
-                          const category = courseEl?.value || "Starters";
-                          const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
-                          const exists = selections.some((s: MenuSelection) => s.category === category);
-                          return exists ? "Update Item" : "+ Add Item";
-                        })()}
-                      </button>
-                    </div>
+                        if (customNameEl) customNameEl.value = "";
+                      }}
+                      className="w-full sm:w-auto shrink-0 btn-gold rounded-lg px-4 py-1.5 text-xs font-semibold inline-flex items-center justify-center gap-1 shadow-sm h-[32px] whitespace-nowrap"
+                    >
+                      {(() => {
+                        const courseEl = typeof document !== "undefined"
+                          ? document.getElementById(`sel-course-${idx}`) as HTMLSelectElement | null
+                          : null;
+                        const category = courseEl?.value || "Starters";
+                        const selections = pkg.menu_selections || parseDescriptionToSelections(pkg.description || "");
+                        const exists = selections.some((s: MenuSelection) => s.category === category);
+                        return exists ? "Update Item" : "+ Add Item";
+                      })()}
+                    </button>
                   </div>
                 </div>
               </div>

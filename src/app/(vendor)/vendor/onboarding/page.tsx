@@ -347,7 +347,7 @@ export default function VendorOnboarding() {
                       />
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
                         {gstState === "loading" && <Loader2 size={15} className="animate-spin text-gold" />}
-                        {gstState === "verified" && <CheckCircle2 size={15} className="text-emerald-400" />}
+                        {gstState === "verified" && <CheckCircle2 size={15} className="text-emerald-600" />}
                         {gstState === "error" && <ShieldAlert size={15} className="text-red-400" />}
                       </span>
                     </div>
@@ -375,9 +375,9 @@ export default function VendorOnboarding() {
                   </div>
 
                   {gstState === "verified" && gstInfo && (
-                    <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 space-y-2 animate-fade-in-scale">
-                      <p className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
-                        <CheckCircle2 size={12} /> GSTIN verified — details filled in below
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2 animate-fade-in-scale">
+                      <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
+                        <CheckCircle2 size={12} className="text-emerald-600" /> GSTIN verified — details filled in below
                       </p>
                       <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
                         {[
@@ -389,12 +389,12 @@ export default function VendorOnboarding() {
                           .filter(([, value]) => Boolean(value))
                           .map(([label, value]) => (
                             <div key={label} className="flex gap-1.5 min-w-0">
-                              <dt className="text-emerald-400/70 shrink-0">{label}:</dt>
-                              <dd className="text-emerald-100 truncate">{value}</dd>
+                              <dt className="text-emerald-700/80 shrink-0 font-medium">{label}:</dt>
+                              <dd className="text-emerald-950 truncate font-semibold">{value}</dd>
                             </div>
                           ))}
                       </dl>
-                      <p className="text-[10px] text-emerald-400/70">
+                      <p className="text-[10px] text-emerald-700">
                         Everything below stays editable — correct anything that looks off.
                       </p>
                     </div>

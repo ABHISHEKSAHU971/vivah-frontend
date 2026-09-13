@@ -127,3 +127,49 @@ export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+const BRIEF_STORAGE_KEY = "pmv_discovery_brief";
+
+/** Persist the couple's event brief so venue detail can prefill date/guests. */
+export function saveDiscoveryBrief(brief: Partial<DiscoveryBrief>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const prev = loadDiscoveryBrief();
+    const next: DiscoveryBrief = {
+      city: brief.city ?? prev?.city ?? "",
+      date: brief.date ?? prev?.date ?? "",
+      guests: brief.guests ?? prev?.guests ?? 300,
+      theme: brief.theme ?? prev?.theme,
+      tier: brief.tier ?? prev?.tier,
+    };
+    sessionStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+export function loadDiscoveryBrief(): DiscoveryBrief | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(BRIEF_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DiscoveryBrief;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      city: parsed.city || "",
+      date: parsed.date || "",
+      guests: Number(parsed.guests) || 300,
+      theme: parsed.theme,
+      tier: parsed.tier,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Parse a guests query value like "300-600 guests" or "300" into a number. */
+export function guestsFromQuery(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const digits = raw.match(/\d+/);
+  return digits ? Number(digits[0]) : null;
+}

@@ -406,9 +406,41 @@ export function DecorationBuilder({
             </div>
           </Section>
 
-          {/* 3 — Packages & pricing */}
-          <Section index={3} title="Packages & pricing" requirement="Required" hasError={sectionHasError(ti, ["tiers"])}
+          {/* 3 — Common inclusions (theme-level; required by listing validation) */}
+          <Section
+            index={3}
+            title="What's included"
+            requirement="Required"
+            hasError={sectionHasError(ti, ["includes", "excludes"])}
+            subtitle="Common items included in every package for this theme"
+            defaultOpen
+          >
+            <ChipInput
+              label="Common inclusions *"
+              placeholder="e.g. Floral Mandap"
+              values={theme.includes}
+              onChange={(v) => patch(ti, { includes: v })}
+              suggestions={COMMON_INCLUSION_TAGS}
+              hint="Shown on your listing — add at least one"
+            />
+            {errors[`themes.${ti}.includes`] && (
+              <p className="text-[10px] text-red-500 font-semibold -mt-2">{errors[`themes.${ti}.includes`]}</p>
+            )}
+            <ChipInput
+              label="What's not included"
+              placeholder="e.g. Generator & Power Backup"
+              values={theme.excludes}
+              onChange={(v) => patch(ti, { excludes: v })}
+              suggestions={COMMON_EXCLUSION_TAGS}
+            />
+          </Section>
+
+          {/* 4 — Packages & pricing */}
+          <Section index={4} title="Packages & pricing" requirement="Required" hasError={sectionHasError(ti, ["tiers"])}
             subtitle="Create as many packages as you like — no fixed tiers" defaultOpen>
+            {errors[`themes.${ti}.tiers`] && (
+              <p className="text-[10px] text-red-500 font-semibold">{errors[`themes.${ti}.tiers`]}</p>
+            )}
             {theme.tiers.length === 0 && (
               <p className="text-xs text-gray-400 py-3 text-center">
                 No packages yet. Add packages like &ldquo;Basic Wedding Decor&rdquo; or &ldquo;Royal Wedding Package&rdquo;.
@@ -434,6 +466,9 @@ export function DecorationBuilder({
                     <input value={pkg.name} onChange={(e) => patchPackage(ti, pi, { name: e.target.value })}
                       placeholder="e.g. Classic Wedding Decor"
                       className={`${inputCls} ${errors[`themes.${ti}.tiers.${pi}.name`] ? "border-red-400" : ""}`} />
+                    {errors[`themes.${ti}.tiers.${pi}.name`] && (
+                      <p className="text-[10px] text-red-500 font-semibold mt-1">{errors[`themes.${ti}.tiers.${pi}.name`]}</p>
+                    )}
                   </div>
                   <div>
                     <label className={labelCls}>Package label (optional)</label>
@@ -493,8 +528,8 @@ export function DecorationBuilder({
             </button>
           </Section>
 
-          {/* 4 — Optional add-ons */}
-          <Section index={4} title="Optional add-ons" requirement="Optional"
+          {/* 5 — Optional add-ons */}
+          <Section index={5} title="Optional add-ons" requirement="Optional"
             subtitle="Extras customers can buy on top of any package">
             <p className="text-[11px] text-gray-400">
               Examples: LED Wall — ₹8,000 · Extra Floral Decoration — ₹5,000 · Premium Lighting — ₹7,500
@@ -520,8 +555,8 @@ export function DecorationBuilder({
             </button>
           </Section>
 
-          {/* 5 — Commercials & policies */}
-          <Section index={5} title="Commercials & policies" requirement="Optional"
+          {/* 6 — Commercials & policies */}
+          <Section index={6} title="Commercials & policies" requirement="Optional"
             subtitle="Advance, setup time, travel and cancellation">
             <div className="grid sm:grid-cols-2 gap-3">
               <div>

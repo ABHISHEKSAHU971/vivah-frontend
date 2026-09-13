@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BedDouble, Heart, MapPin, ShieldCheck, Star, Users } from "lucide-react";
 
 export interface VenueSummary {
@@ -94,10 +95,19 @@ export default function VenueCard({ venue, index }: { venue: VenueSummary; index
 
   const rating = Number(venue.avg_rating ?? 0);
   const rooms = venue.total_rooms ?? (venue.num_ac_rooms || 0) + (venue.num_non_ac_rooms || 0);
+  const searchParams = useSearchParams();
+  const detailQuery = new URLSearchParams();
+  const date = searchParams.get("date");
+  const guests = searchParams.get("guests");
+  if (date) detailQuery.set("date", date);
+  if (guests) detailQuery.set("guests", guests);
+  const detailHref = detailQuery.toString()
+    ? `/venues/${venue.id}?${detailQuery.toString()}`
+    : `/venues/${venue.id}`;
 
   return (
     <Link
-      href={`/venues/${venue.id}`}
+      href={detailHref}
       className="group bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:border-gold/30 hover:-translate-y-0.5 transition-all duration-300 flex flex-col"
     >
       {/* ── Photo ─────────────────────────────────────────────── */}
